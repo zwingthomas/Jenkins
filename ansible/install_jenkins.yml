@@ -1,0 +1,124 @@
+# https://www.cidevops.com/2018/05/install-jenkins-using-ansible-playbook.html
+
+---
+- name: Setup Jenkins server with AWS CLI v2, Terraform, and Docker
+  hosts: jenkins
+  become: yes
+
+  tasks:
+    - name: Update apt package list
+      apt:
+        update_cache: yes
+
+    - name: Install required packages for AWS CLI v2 and Jenkins
+      apt:
+        name:
+          - unzip
+          - curl
+          - gnupg2  # Required for adding Jenkins key
+          - openjdk-11-jdk  # Java required for Jenkins
+        state: present
+
+    - name: ensure the jenkins apt repository key is installed
+      apt_key: url=https://pkg.jenkins.io/debian/jenkins.io-2023.key state=present
+
+    - name: ensure the repository is configured
+      apt_repository: repo='deb https://pkg.jenkins.io/debian-stable binary/' state=present
+
+    - name: ensure jenkins is installed
+      apt: name=jenkins update_cache=yes
+
+    - name: ensure jenkins is running
+      service: name=jenkins state=started
+
+    - name: Remove AWS CLI v1 if installed
+      apt:
+        name: awscli
+        state: absent
+
+    - name: Download AWS CLI v2
+      get_url:
+        url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: /tmp/awscliv2.zip
+
+    - name: Unzip AWS CLI v2
+      unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Check if AWS CLI v2 is already installed
+      command: aws --version
+      register: aws_cli_check
+      ignore_errors: yes
+
+    - name: Install or update AWS CLI v2
+      command: /tmp/aws/install --update
+      when: aws_cli_check.rc == 0  # Only run if AWS CLI is already installed
+
+    - name: Install AWS CLI v2 if not installed
+      command: /tmp/aws/install
+      when: aws_cli_check.rc != 0  # Only run if AWS CLI is not installed
+
+    - name: Check AWS CLI version
+      command: aws --version
+      register: aws_cli_version_output
+
+    - name: Display AWS CLI version
+      debug:
+        msg: "{{ aws_cli_version_output.stdout }}"
+
+    - name: Install unzip utility
+      apt:
+        name: unzip
+        state: present
+
+    - name: Download Terraform
+      get_url:
+        url: https://releases.hashicorp.com/terraform/1.5.5/terraform_1.5.5_linux_amd64.zip
+        dest: /tmp/terraform_1.5.5_linux_amd64.zip
+
+    - name: Unzip Terraform
+      unarchive:
+        src: /tmp/terraform_1.5.5_linux_amd64.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Move Terraform to /usr/local/bin
+      command: mv /tmp/terraform /usr/local/bin/terraform
+      args:
+        creates: /usr/local/bin/terraform
+
+    - name: Check Terraform version
+      command: terraform --version
+      register: terraform_version_output
+
+    - name: Display Terraform version
+      debug:
+        msg: "{{ terraform_version_output.stdout }}"
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Add Jenkins user to Docker group
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
+    
+    - name: Reload systemd manager configuration
+      command: systemctl daemon-reload
+
+    - name: Restart Jenkins service
+      systemd:
+        name: jenkins
+        state: restarted
+        enabled: yes
+
+    - name: Restart Docker service
+      systemd:
+        name: docker
+        state: restarted
+        enabled: yes
