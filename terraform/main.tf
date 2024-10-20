@@ -5,7 +5,7 @@ output "ansible_inventory" {
 
 terraform {
   backend "s3" {
-    bucket         = "terraform-state-354923279633"
+    bucket         = "tfstate-354923279633"
     key            = "jenkins/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-lock-table"

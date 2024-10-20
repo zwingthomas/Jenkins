@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "terraform_state" {
-  bucket = "terraform-state-354923279633"
+  bucket = "tfstate-354923279633"
 
   provider = aws.us_east
 
