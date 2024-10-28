@@ -96,29 +96,124 @@
     - name: Display Terraform version
       debug:
         msg: "{{ terraform_version_output.stdout }}"
+    
+    - name: Reload systemd manager configuration
+      command: systemctl daemon-reload
 
-    - name: Install Docker
-      apt:
-        name: docker.io
+    # Google Cloud SDK installation
+    - name: Add Google Cloud SDK GPG key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        keyring: /usr/share/keyrings/cloud.google.gpg
         state: present
+
+    - name: Add Google Cloud SDK apt repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main"
+        state: present
+
+    - name: Update apt cache after adding gcloud repo
+      apt:
+        update_cache: yes
+
+    - name: Install Google Cloud SDK
+      apt:
+        name: google-cloud-sdk
+        state: present
+
+    - name: Check gcloud version
+      command: gcloud --version
+      register: gcloud_version_output
+
+    - name: Display gcloud version
+      debug:
+        msg: "{{ gcloud_version_output.stdout }}"
+
+    # Plugins
+    - name: Ensure Jenkins plugin directory exists
+      file:
+        path: /var/lib/jenkins/plugins
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0755'
+
+    - name: Download AWS Credentials Plugin for Jenkins
+      get_url:
+        url: https://updates.jenkins.io/latest/aws-credentials.hpi
+        dest: /var/lib/jenkins/plugins/aws-credentials.hpi
+        mode: '0644'
+        owner: jenkins
+        group: jenkins
+
+    - name: Set plugin ownership and permissions
+      file:
+        path: /var/lib/jenkins/plugins/aws-credentials.hpi
+        owner: jenkins
+        group: jenkins
+        mode: '0644'
+
+    # Enable experimental Docker
+    - name: Remove old versions of Docker
+      apt:
+        name:
+          - docker
+          - docker-engine
+          - docker.io
+          - containerd
+          - runc
+        state: absent
+
+    - name: Install packages to allow apt to use a repository over HTTPS
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Add Docker's official GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker apt repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install Docker CE
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: latest
 
     - name: Add Jenkins user to Docker group
       user:
         name: jenkins
         groups: docker
         append: yes
-    
-    - name: Reload systemd manager configuration
-      command: systemctl daemon-reload
-
-    - name: Restart Jenkins service
-      systemd:
-        name: jenkins
-        state: restarted
-        enabled: yes
 
     - name: Restart Docker service
       systemd:
         name: docker
         state: restarted
         enabled: yes
+
+    # Restart Jenkins to complete installation
+    - name: Restart Jenkins service
+      systemd:
+        name: jenkins
+        state: restarted
+        enabled: yes
+
+    - name: ensure jenkins is running
+      service: name=jenkins state=started
