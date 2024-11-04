@@ -1,0 +1,87 @@
+- name: Jenkins Node Cleanup Playbook
+  hosts: jenkins_nodes
+  become: yes
+  tasks:
+
+    - name: Clean up Jenkins workspaces
+      file:
+        path: /var/lib/jenkins/workspace/
+        state: absent
+      tags: cleanup
+
+    - name: Delete old builds
+      shell: |
+        find /var/lib/jenkins/jobs/ -type d -path "*/builds/*" -mtime +30 -exec rm -rf {} +
+      tags: cleanup
+
+    - name: Clean up Jenkins logs
+      shell: |
+        find /var/log/jenkins -type f -name "*.log" -exec truncate -s 0 {} \;
+      tags: cleanup
+
+    # - name: Remove unused plugins
+    #   shell: |
+    #     jenkins-cli -s http://localhost:8080/ -auth user:token uninstall-plugin {{ item }}
+    #   loop: "{{ unused_plugins }}"
+    #   when: unused_plugins is defined
+    #   tags: cleanup
+
+    - name: Docker system prune (if Docker is present)
+      shell: docker system prune -a -f
+      when: docker_present | bool
+      tags: cleanup
+
+    - name: Add 2GB swap space if not already present
+      command: fallocate -l 2G /swapfile
+      args:
+        creates: /swapfile
+      tags: swap
+
+    - name: Set permissions for swap file
+      file:
+        path: /swapfile
+        mode: '0600'
+      tags: swap
+
+    - name: Setup swap space
+      command: mkswap /swapfile
+      args:
+        creates: /swapfile
+      tags: swap
+
+    - name: Enable swap space
+      command: swapon /swapfile
+      tags: swap
+
+    - name: Add swap file to /etc/fstab
+      mount:
+        name: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        state: present
+      tags: swap
+
+    - name: Clear temporary files
+      file:
+        path: /tmp/
+        state: absent
+      tags: cleanup
+
+    - name: Clear /var/tmp
+      file:
+        path: /var/tmp/
+        state: absent
+      tags: cleanup
+
+    - name: Restart Jenkins
+      service:
+        name: jenkins
+        state: restarted
+      tags: restart
+
+  vars:
+    # unused_plugins:
+    #   - example-plugin1
+    #   - example-plugin2
+    docker_present: "{{ (ansible_facts.packages['docker'] is defined) or (ansible_facts.services['docker'] is defined) }}"
