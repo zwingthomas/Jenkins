@@ -3,3 +3,5 @@ terraform/terraform.tfstate
 terraform/.terraform.lock.hcl
 terraform/terraform.tfvars
 terraform/.terraform/
+ansible/credentials.yml
+ansible/auth_gcp.json

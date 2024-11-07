@@ -1,0 +1,47 @@
+---
+- name: Ensure Jenkins credentials are updated
+  hosts: jenkins
+  vars_files:
+    - credentials.yml
+
+  vars:
+    jenkins_host: "{{ inventory_hostname }}"  # Set to the current target host from inventory
+    jenkins_url: "http://{{ jenkins_host }}:8080"
+    jenkins_user: "{{ jenkins_username }}"
+    jenkins_password: "{{ jenkins_password }}"
+
+  tasks:
+    - name: Transfer GCP credential file to Jenkins server
+      ansible.builtin.copy:
+        src: "{{ credentials['gcp-credentials-file'] }}"
+        dest: "/tmp/auth_gcp.json"
+        mode: '0600'
+      when: credentials['gcp-credentials-file'] is defined
+
+    - name: Read GCP credential file content
+      ansible.builtin.slurp:
+        src: "/tmp/auth_gcp.json"
+      register: gcp_file_content
+      when: credentials['gcp-credentials-file'] is defined
+
+    - name: Set fact for GCP file content
+      set_fact:
+        gcp_file_base64: "{{ gcp_file_content['content'] }}"
+      when: credentials['gcp-credentials-file'] is defined
+
+    - name: Manage Jenkins credentials
+      community.general.jenkins_script:
+        url: "{{ jenkins_url }}"
+        user: "{{ jenkins_user }}"
+        password: "{{ jenkins_token }}"
+        script: "{{ lookup('template', 'manage_credentials.groovy.j2') }}"
+      vars:
+        credentials_data: "{{ credentials }}"
+        gcp_file_base64: "{{ gcp_file_base64 | default('') }}"
+        gcp_file_name: "auth_gcp.json"
+
+    - name: Clean up temporary GCP credential file on the Jenkins server
+      ansible.builtin.file:
+        path: "/tmp/auth_gcp.json"
+        state: absent
+      when: credentials['gcp-credentials-file'] is defined

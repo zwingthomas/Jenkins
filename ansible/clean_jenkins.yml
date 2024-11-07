@@ -1,5 +1,5 @@
 - name: Jenkins Node Cleanup Playbook
-  hosts: jenkins_nodes
+  hosts: jenkins
   become: yes
   tasks:
 
@@ -31,47 +31,21 @@
       when: docker_present | bool
       tags: cleanup
 
-    - name: Add 2GB swap space if not already present
-      command: fallocate -l 2G /swapfile
-      args:
-        creates: /swapfile
-      tags: swap
-
-    - name: Set permissions for swap file
-      file:
-        path: /swapfile
-        mode: '0600'
-      tags: swap
-
-    - name: Setup swap space
-      command: mkswap /swapfile
-      args:
-        creates: /swapfile
-      tags: swap
-
-    - name: Enable swap space
-      command: swapon /swapfile
-      tags: swap
-
-    - name: Add swap file to /etc/fstab
-      mount:
-        name: none
-        src: /swapfile
-        fstype: swap
-        opts: sw
-        state: present
-      tags: swap
-
-    - name: Clear temporary files
+    - name: Ensure /tmp directory exists
       file:
         path: /tmp/
-        state: absent
+        state: directory
+        mode: '1777'
+      tags: setup
+
+    - name: Clear files in /tmp if directory exists
+      shell: |
+        if [ -d /tmp ]; then find /tmp -type f -delete; fi
       tags: cleanup
 
-    - name: Clear /var/tmp
-      file:
-        path: /var/tmp/
-        state: absent
+    - name: Clear /var/tmp files if directory exists
+      shell: |
+        if [ -d /var/tmp ]; then find /var/tmp -type f -delete; fi
       tags: cleanup
 
     - name: Restart Jenkins

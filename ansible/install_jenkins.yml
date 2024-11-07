@@ -6,17 +6,49 @@
   become: yes
 
   tasks:
+  
     - name: Update apt package list
       apt:
         update_cache: yes
 
+  ### Install Java
+    - name: Add the OpenJDK PPA repository
+      ansible.builtin.apt_repository:
+        repo: "ppa:openjdk-r/ppa"
+        state: present
+        update_cache: yes
+
+    - name: Install OpenJDK 17
+      ansible.builtin.apt:
+        name: openjdk-17-jdk
+        state: present
+        update_cache: yes
+
+    - name: Set JAVA_HOME environment variable
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^JAVA_HOME='
+        line: 'JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"'
+        state: present
+
+    - name: Reload environment variables
+      ansible.builtin.shell: source /etc/environment
+      args:
+        executable: /bin/bash
+
+    - name: Verify Java installation
+      ansible.builtin.command: java -version
+      register: java_version
+    - debug:
+        var: java_version.stdout
+
+### Download packages
     - name: Install required packages for AWS CLI v2 and Jenkins
       apt:
         name:
           - unzip
           - curl
           - gnupg2  # Required for adding Jenkins key
-          - openjdk-11-jdk  # Java required for Jenkins
         state: present
 
     - name: ensure the jenkins apt repository key is installed
@@ -25,6 +57,7 @@
     - name: ensure the repository is configured
       apt_repository: repo='deb https://pkg.jenkins.io/debian-stable binary/' state=present
 
+### Install Jenkins
     - name: ensure jenkins is installed
       apt: name=jenkins update_cache=yes
 
@@ -36,6 +69,7 @@
         name: awscli
         state: absent
 
+### Install AWS CLI
     - name: Download AWS CLI v2
       get_url:
         url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
@@ -68,6 +102,8 @@
       debug:
         msg: "{{ aws_cli_version_output.stdout }}"
 
+
+### Install Terraform
     - name: Install unzip utility
       apt:
         name: unzip
@@ -100,7 +136,7 @@
     - name: Reload systemd manager configuration
       command: systemctl daemon-reload
 
-    # Google Cloud SDK installation
+# Google Cloud SDK installation
     - name: Add Google Cloud SDK GPG key
       apt_key:
         url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
@@ -129,7 +165,7 @@
       debug:
         msg: "{{ gcloud_version_output.stdout }}"
 
-    # Plugins
+### Plugins
     - name: Ensure Jenkins plugin directory exists
       file:
         path: /var/lib/jenkins/plugins
@@ -153,7 +189,7 @@
         group: jenkins
         mode: '0644'
 
-    # Enable experimental Docker
+### Enable experimental Docker
     - name: Remove old versions of Docker
       apt:
         name:
@@ -208,7 +244,7 @@
         state: restarted
         enabled: yes
 
-    # Restart Jenkins to complete installation
+# Restart Jenkins to complete installation
     - name: Restart Jenkins service
       systemd:
         name: jenkins
