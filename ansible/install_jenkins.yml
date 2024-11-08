@@ -5,6 +5,17 @@
   hosts: jenkins
   become: yes
 
+  vars:
+    jenkins_plugins:
+      - aws-credentials
+      - plain-credentials
+      - azure-credentials
+      - credentials
+      - workflow-step-api
+      - aws-java-sdk-ec2  # Dependency for AWS Credentials Plugin
+      - azure-sdk  # Dependency for Azure Credentials Plugin
+      - aws-java-sdk-minimal  # Newly added minimal SDK for EC2
+
   tasks:
   
     - name: Update apt package list
@@ -64,12 +75,12 @@
     - name: ensure jenkins is running
       service: name=jenkins state=started
 
+### Install AWS CLI
     - name: Remove AWS CLI v1 if installed
       apt:
         name: awscli
         state: absent
 
-### Install AWS CLI
     - name: Download AWS CLI v2
       get_url:
         url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
@@ -165,7 +176,7 @@
       debug:
         msg: "{{ gcloud_version_output.stdout }}"
 
-### Plugins
+### Install Jenkins Plugins
     - name: Ensure Jenkins plugin directory exists
       file:
         path: /var/lib/jenkins/plugins
@@ -174,20 +185,29 @@
         group: jenkins
         mode: '0755'
 
-    - name: Download AWS Credentials Plugin for Jenkins
+    - name: Install Jenkins plugins
       get_url:
-        url: https://updates.jenkins.io/latest/aws-credentials.hpi
-        dest: /var/lib/jenkins/plugins/aws-credentials.hpi
+        url: "https://updates.jenkins.io/latest/{{ item }}.hpi"
+        dest: "/var/lib/jenkins/plugins/{{ item }}.hpi"
         mode: '0644'
         owner: jenkins
         group: jenkins
+      loop: "{{ jenkins_plugins }}"
 
     - name: Set plugin ownership and permissions
       file:
-        path: /var/lib/jenkins/plugins/aws-credentials.hpi
+        path: "/var/lib/jenkins/plugins/{{ item }}.hpi"
         owner: jenkins
         group: jenkins
         mode: '0644'
+      loop: "{{ jenkins_plugins }}"
+
+    - name: Ensure Jenkins plugins have correct permissions
+      file:
+        path: /var/lib/jenkins/plugins
+        owner: jenkins
+        group: jenkins
+        recurse: yes
 
 ### Enable experimental Docker
     - name: Remove old versions of Docker

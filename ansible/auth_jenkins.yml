@@ -7,7 +7,7 @@
   vars:
     jenkins_host: "{{ inventory_hostname }}"  # Set to the current target host from inventory
     jenkins_url: "http://{{ jenkins_host }}:8080"
-    jenkins_user: "{{ jenkins_username }}"
+    jenkins_username: "{{ jenkins_username }}"
     jenkins_password: "{{ jenkins_password }}"
 
   tasks:
@@ -29,16 +29,32 @@
         gcp_file_base64: "{{ gcp_file_content['content'] }}"
       when: credentials['gcp-credentials-file'] is defined
 
+    - name: Render Groovy script to file for debugging
+      template:
+        src: manage_credentials.groovy.j2
+        dest: /tmp/rendered_manage_credentials.groovy
+      delegate_to: localhost
+      vars:
+        credentials_data: "{{ credentials }}"
+        gcp_file_base64: "{{ gcp_file_base64 | default('') }}"
+        gcp_file_name: "auth_gcp.json"
+
     - name: Manage Jenkins credentials
       community.general.jenkins_script:
         url: "{{ jenkins_url }}"
-        user: "{{ jenkins_user }}"
-        password: "{{ jenkins_token }}"
+        user: "{{ jenkins_username }}"
+        password: "{{ jenkins_password }}"
         script: "{{ lookup('template', 'manage_credentials.groovy.j2') }}"
       vars:
         credentials_data: "{{ credentials }}"
         gcp_file_base64: "{{ gcp_file_base64 | default('') }}"
         gcp_file_name: "auth_gcp.json"
+      register: jenkins_credentials_result
+      failed_when: jenkins_credentials_result.failed
+
+    - name: Display Jenkins credentials script output
+      debug:
+        var: jenkins_credentials_result
 
     - name: Clean up temporary GCP credential file on the Jenkins server
       ansible.builtin.file:
