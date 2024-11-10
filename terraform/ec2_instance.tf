@@ -10,6 +10,22 @@ resource "aws_instance" "jenkins_server" {
   tags = {
     Name = "${var.project_name}-instance"
   }
+
+  root_block_device {
+    volume_size = 50      # GB
+    volume_type = "gp3"
+  }
+
+  user_data = <<-EOF
+              #!/bin/bash
+              # Create a 4 GB swap file
+              fallocate -l 4G /swapfile
+              chmod 600 /swapfile
+              mkswap /swapfile
+              swapon /swapfile
+              # Make the swap file permanent
+              echo '/swapfile none swap sw 0 0' >> /etc/fstab
+              EOF
 }
 
 data "aws_ami" "ubuntu" {
