@@ -1,12 +1,7 @@
-# https://www.cidevops.com/2018/05/install-jenkins-using-ansible-playbook.html
-
----
 - name: Setup Jenkins server with AWS CLI v2, Terraform, and Docker
   hosts: jenkins
   become: yes
 
-  vars_files:
-    - credentials.yml
   vars:
     jenkins_plugins:
       # Core credentials management
@@ -18,6 +13,7 @@
       - ssh-credentials               # SSH credentials management for SSH-based integrations
 
       # Workflow and pipeline support
+      - workflow-api                  # API for building pipeline plugins
       - workflow-step-api             # API for defining pipeline steps
       - workflow-aggregator           # Aggregates pipeline-related plugins
       - pipeline-model-definition     # Declarative pipeline syntax
@@ -34,20 +30,29 @@
       - pipeline-rest-api             # REST API for interacting with pipelines
       - pipeline-build-step           # Executes builds in Jenkins pipeline
       - pipeline-groovy-lib           # Library for reusable Groovy functions
+      - pipeline-stage-step           # Manages stage steps in pipelines
+      - workflow-cps                  # Groovy support in pipelines
+      - workflow-job                  # Pipeline job type
+      - workflow-basic-steps          # Basic pipeline steps
+      - workflow-durable-task-step    # Manages nodes and processes in pipelines
 
       # Cloud and environment-specific integrations
       - aws-java-sdk-ec2              # AWS SDK for EC2 interactions
       - aws-java-sdk-minimal          # Minimal AWS SDK for core services
       - azure-sdk                     # SDK for Azure integrations
       - docker-plugin                 # Docker integration for containers and image builds
+      - docker-commons                # Common Docker components
+      - docker-java-api               # Java API for Docker
       - kubernetes                    # Integrates Jenkins with Kubernetes
+      - cloud-stats                   # Cloud statistics and reporting
 
       # Essential dependencies
       - bouncycastle-api              # Cryptographic algorithms for security and encryption
       - structs                       # Structured data support
       - jackson2-api                  # JSON parsing and serialization with Jackson 2
       - jaxb                          # Java XML Binding for XML processing
-      - apache-httpcomponents-client-4-api  # HTTP client capabilities
+      - apache-httpcomponents-client-4-api  # HTTP client capabilities (Apache HTTPComponents v4)
+      - apache-httpcomponents-client-5-api  # HTTP client capabilities (Apache HTTPComponents v5)
       - joda-time-api                 # Date and time handling utilities
       - javax-activation-api          # MIME type handling support
       - snakeyaml-api                 # YAML processing for configuration management
@@ -58,9 +63,17 @@
       - commons-compress-api          # Compression support for archiving
       - commons-text-api              # Text manipulation utilities
       - jquery3-api                   # JavaScript utilities for UI interactions
+      - jquery                        # Older version of jQuery for legacy support
       - bootstrap5-api                # UI styling with Bootstrap framework
       - prism-api                     # Syntax highlighting for code snippets
       - variant                       # Helper library used by various plugins
+      - gson-api                      # Google Gson library for JSON
+      - json-api                      # JSON APIs for data interchange
+      - asm-api                       # Java bytecode manipulation
+      - jakarta-mail-api              # JavaMail API for email functionality
+      - jsch                          # Java Secure Channel for SSH
+      - resource-disposer             # Disposes of resources asynchronously
+      - matrix-project                # Multi-dimensional project support
 
       # UI and visualization
       - build-monitor-plugin          # Visual monitor for job status
@@ -71,6 +84,24 @@
       - warnings-ng                   # Collects and visualizes static code analysis warnings
       - echarts-api                   # Data visualization for monitoring plugins
       - font-awesome-api              # Icons for enhanced UI visualization
+      - blueocean-pipeline-api-impl   # Blue Ocean Pipeline API implementation
+      - blueocean-config              # Blue Ocean configuration
+      - blueocean-git-pipeline        # Blue Ocean Git pipeline support
+      - blueocean-commons             # Common Blue Ocean components
+      - blueocean-web                 # Blue Ocean web interface
+      - blueocean-rest                # REST API for Blue Ocean
+      - blueocean-core-js             # Core JavaScript libraries for Blue Ocean
+      - blueocean-pipeline-editor     # Pipeline editor in Blue Ocean
+      - blueocean-jwt                 # JWT authentication for Blue Ocean
+      - blueocean-dashboard           # Dashboard view in Blue Ocean
+      - blueocean-display-url         # Display URLs in Blue Ocean
+      - blueocean-github-pipeline     # GitHub integration for Blue Ocean
+      - blueocean-bitbucket-pipeline  # Bitbucket integration for Blue Ocean
+      - blueocean-personalization     # Personalization features in Blue Ocean
+      - blueocean-events              # Event handling in Blue Ocean
+      - blueocean-rest-impl           # REST API implementation for Blue Ocean
+      - jenkins-design-language       # Design language for Jenkins UI
+      - blueocean-i18n                # Internationalization support for Blue Ocean
 
       # Source control management
       - git                           # Git repository integration
@@ -78,6 +109,8 @@
       - git-parameter                 # Parameters for Git repositories in jobs
       - bitbucket                     # Bitbucket integration for SCM
       - display-url-api               # Displays build URLs in notifications and logs
+      - scm-api                       # API for SCM implementations
+      - git-client                    # Git client plugin
 
       # Notifications and reporting
       - email-ext                     # Extended email notifications
@@ -85,6 +118,7 @@
       - junit                         # JUnit test result reporting
       - cobertura                     # Code coverage reporting with JUnit results
       - metrics                       # System and build metrics collection
+      - mailer                        # Core mailer plugin for Jenkins
 
       # Build tools and utilities
       - gradle                        # Gradle builds support
@@ -94,6 +128,8 @@
       - ssh-agent                     # SSH agents in pipelines for Git operations
       - ansible                       # Ansible playbook execution
       - ws-cleanup                    # Cleans up workspace post-build
+      - parameterized-trigger         # Triggers builds with parameters
+      - durable-task                  # Handling of long-running tasks
 
       # Security and quality assurance
       - dependency-check-jenkins-plugin  # Dependency vulnerability checks
@@ -121,216 +157,13 @@
       - code-coverage-api             # Dependency for Cobertura plugin
       - cloudbees-folder              # Hierarchical folder structures for jobs
       - authentication-tokens         # API tokens for secure authentication
-      - pipeline-stage-step           # Manages stage steps in pipelines
       - workflow-job                  # Handles jobs with pipelines
       - forensics-api                 # APIs for forensic analysis of builds
       - analysis-model-api            # API for integrating static analysis tools
 
-    jenkins_admin_username: "{{ jenkins_username }}"
-    jenkins_admin_password: "{{ jenkins_password }}"
-
   tasks:
-  
-    - name: Update apt package list
-      apt:
-        update_cache: yes
 
-  ### Install Java
-    - name: Add the OpenJDK PPA repository
-      ansible.builtin.apt_repository:
-        repo: "ppa:openjdk-r/ppa"
-        state: present
-        update_cache: yes
-
-    - name: Install OpenJDK 17
-      ansible.builtin.apt:
-        name: openjdk-17-jdk
-        state: present
-        update_cache: yes
-
-    - name: Set JAVA_HOME environment variable
-      ansible.builtin.lineinfile:
-        path: /etc/environment
-        regexp: '^JAVA_HOME='
-        line: 'JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"'
-        state: present
-
-    - name: Reload environment variables
-      ansible.builtin.shell: source /etc/environment
-      args:
-        executable: /bin/bash
-
-    - name: Verify Java installation
-      ansible.builtin.command: java -version
-      register: java_version
-      
-    - debug:
-        var: java_version.stdout
-
-### Download packages
-    - name: Install required packages for AWS CLI v2 and Jenkins
-      apt:
-        name:
-          - unzip
-          - curl
-          - gnupg2  # Required for adding Jenkins key
-        state: present
-
-    - name: ensure the jenkins apt repository key is installed
-      apt_key: url=https://pkg.jenkins.io/debian/jenkins.io-2023.key state=present
-
-    - name: ensure the repository is configured
-      apt_repository: repo='deb https://pkg.jenkins.io/debian-stable binary/' state=present
-
-### Install Jenkins
-    - name: ensure jenkins is installed
-      apt: name=jenkins update_cache=yes
-
-    - name: ensure jenkins is running
-      service: name=jenkins state=started
-
-### Set Username / Password
-    - name: read admin pwd
-      shell: cat /var/lib/jenkins/secrets/initialAdminPassword
-      register: adminpwd
-
-    - name: unlock and add admin user
-      block:
-        - name: unlock and add admin user
-          jenkins_script:
-            script: |
-              import jenkins.model.*
-              import hudson.security.*
-              def instance = Jenkins.getInstance()
-              def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-              hudsonRealm.createAccount('${user}', '${user_pwd}')
-              instance.setSecurityRealm(hudsonRealm)
-              def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
-              strategy.setAllowAnonymousRead(false)
-              instance.setAuthorizationStrategy(strategy)
-              instance.save()
-            args:
-              user: "{{ jenkins_admin_username }}"
-              user_pwd: "{{ jenkins_admin_password }}"
-            user: admin
-            password: "{{ adminpwd.stdout }}"
-      rescue:
-        - debug:
-            msg: "The authentication has already been set up, will get 401"
-
-    - name: complete setup wizard
-      jenkins_script:
-        script: |
-          import static jenkins.model.Jenkins.instance as jenkins
-          import jenkins.install.InstallState
-          if (!jenkins.installState.isSetupComplete()) {
-            InstallState.INITIAL_SETUP_COMPLETED.initializeState()
-          }
-        user: "{{ jenkins_admin_username }}"
-        password: "{{ jenkins_admin_password }}"
-
-### Install AWS CLI
-    - name: Remove AWS CLI v1 if installed
-      apt:
-        name: awscli
-        state: absent
-
-    - name: Download AWS CLI v2
-      get_url:
-        url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
-        dest: /tmp/awscliv2.zip
-
-    - name: Unzip AWS CLI v2
-      unarchive:
-        src: /tmp/awscliv2.zip
-        dest: /tmp/
-        remote_src: yes
-
-    - name: Check if AWS CLI v2 is already installed
-      command: aws --version
-      register: aws_cli_check
-      ignore_errors: yes
-
-    - name: Install or update AWS CLI v2
-      command: /tmp/aws/install --update
-      when: aws_cli_check.rc == 0  # Only run if AWS CLI is already installed
-
-    - name: Install AWS CLI v2 if not installed
-      command: /tmp/aws/install
-      when: aws_cli_check.rc != 0  # Only run if AWS CLI is not installed
-
-    - name: Check AWS CLI version
-      command: aws --version
-      register: aws_cli_version_output
-
-    - name: Display AWS CLI version
-      debug:
-        msg: "{{ aws_cli_version_output.stdout }}"
-
-
-### Install Terraform
-    - name: Install unzip utility
-      apt:
-        name: unzip
-        state: present
-
-    - name: Download Terraform
-      get_url:
-        url: https://releases.hashicorp.com/terraform/1.5.5/terraform_1.5.5_linux_amd64.zip
-        dest: /tmp/terraform_1.5.5_linux_amd64.zip
-
-    - name: Unzip Terraform
-      unarchive:
-        src: /tmp/terraform_1.5.5_linux_amd64.zip
-        dest: /tmp/
-        remote_src: yes
-
-    - name: Move Terraform to /usr/local/bin
-      command: mv /tmp/terraform /usr/local/bin/terraform
-      args:
-        creates: /usr/local/bin/terraform
-
-    - name: Check Terraform version
-      command: terraform --version
-      register: terraform_version_output
-
-    - name: Display Terraform version
-      debug:
-        msg: "{{ terraform_version_output.stdout }}"
-    
-    - name: Reload systemd manager configuration
-      command: systemctl daemon-reload
-
-# Google Cloud SDK installation
-    - name: Add Google Cloud SDK GPG key
-      apt_key:
-        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-        keyring: /usr/share/keyrings/cloud.google.gpg
-        state: present
-
-    - name: Add Google Cloud SDK apt repository
-      apt_repository:
-        repo: "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main"
-        state: present
-
-    - name: Update apt cache after adding gcloud repo
-      apt:
-        update_cache: yes
-
-    - name: Install Google Cloud SDK
-      apt:
-        name: google-cloud-sdk
-        state: present
-
-    - name: Check gcloud version
-      command: gcloud --version
-      register: gcloud_version_output
-
-    - name: Display gcloud version
-      debug:
-        msg: "{{ gcloud_version_output.stdout }}"
-
-### Install Jenkins Plugins
+    ### Install Jenkins Plugins
     - name: Ensure Jenkins plugin directory exists
       file:
         path: /var/lib/jenkins/plugins
@@ -363,67 +196,14 @@
         group: jenkins
         recurse: yes
 
-### Enable experimental Docker
-    - name: Remove old versions of Docker
-      apt:
-        name:
-          - docker
-          - docker-engine
-          - docker.io
-          - containerd
-          - runc
-        state: absent
-
-    - name: Install packages to allow apt to use a repository over HTTPS
-      apt:
-        name:
-          - apt-transport-https
-          - ca-certificates
-          - curl
-          - gnupg
-          - lsb-release
-        state: present
-
-    - name: Add Docker's official GPG key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
-
-    - name: Add Docker apt repository
-      apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-        state: present
-
-    - name: Update apt package index
-      apt:
-        update_cache: yes
-
-    - name: Install Docker CE
-      apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-        state: latest
-
-    - name: Add Jenkins user to Docker group
-      user:
-        name: jenkins
-        groups: docker
-        append: yes
-
-    - name: Restart Docker service
-      systemd:
-        name: docker
-        state: restarted
-        enabled: yes
-
-# Restart Jenkins to complete installation
+    # Restart Jenkins to complete installation
     - name: Restart Jenkins service
       systemd:
         name: jenkins
         state: restarted
         enabled: yes
 
-    - name: ensure jenkins is running
-      service: name=jenkins state=started
+    - name: Ensure Jenkins is running
+      service:
+        name: jenkins
+        state: started
