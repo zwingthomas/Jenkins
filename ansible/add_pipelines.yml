@@ -1,0 +1,83 @@
+---
+- name: Setup Jenkins Pipeline for text2site Repository
+  hosts: jenkins
+  become: yes
+  collections:
+    - community.general
+  vars_files:
+    - credentials.yml
+
+  vars:
+    jenkins_host: "{{ inventory_hostname }}"  # Set to the current target host from inventory
+    jenkins_url: "http://{{ jenkins_host }}:8080"
+    jenkins_username: "{{ jenkins_username }}"
+    jenkins_password: "{{ jenkins_password }}"
+    jenkins_job_name: text2site-pipeline
+    github_repo_url: 'https://github.com/zwingthomas/text2site.git'
+
+  tasks:
+
+    - name: Ensure Jenkins is installed
+      apt:
+        name: jenkins
+        state: present
+      become: yes
+
+    - name: Ensure Jenkins is running
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Wait for Jenkins to be up and running
+      uri:
+        url: "{{ jenkins_url }}/api/json"
+        user: "{{ jenkins_username }}"
+        password: "{{ jenkins_password }}"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+      register: jenkins_api
+      until: jenkins_api.status == 200
+      retries: 10
+      delay: 15
+
+    - name: Create Groovy script to create Jenkins job
+      template:
+        src: create_pipeline_job.groovy.j2
+        dest: "/tmp/create_pipeline_job.groovy"
+
+    - name: Execute Groovy script on Jenkins
+      jenkins_script:
+        url: "{{ jenkins_url }}"
+        user: "{{ jenkins_username }}"
+        password: "{{ jenkins_password }}"
+        script: "{{ lookup('file', '/tmp/create_pipeline_job.groovy') }}"
+      register: groovy_script_result
+
+    - name: Display Groovy script execution result
+      debug:
+        var: groovy_script_result
+
+    - name: Restart Jenkins service
+      service:
+        name: jenkins
+        state: restarted
+      become: yes
+    
+    - name: Wait for Jenkins to be up and running
+      delegate_to: localhost
+      become: no
+      uri:
+        url: "{{ jenkins_url }}/api/json"
+        user: "{{ jenkins_username }}"
+        password: "{{ jenkins_password }}"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+      register: jenkins_api
+      until: jenkins_api.status == 200
+      retries: 10
+      delay: 15
+
+

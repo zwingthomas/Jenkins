@@ -1,0 +1,41 @@
+import jenkins.model.*
+import hudson.model.*
+import org.jenkinsci.plugins.workflow.job.WorkflowJob
+import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition
+import hudson.plugins.git.GitSCM
+import hudson.plugins.git.BranchSpec
+
+// Parameters
+def jobName = '{{ jenkins_job_name }}'
+def repoUrl = '{{ github_repo_url }}'
+def scriptPath = 'Jenkinsfile'
+
+// Get Jenkins instance
+def jenkins = Jenkins.getInstance()
+
+// Check if the job already exists
+def job = jenkins.getItem(jobName)
+
+if (job == null) {
+    println("Creating new job: ${jobName}")
+
+    // Create a new WorkflowJob (Pipeline)
+    job = jenkins.createProject(WorkflowJob, jobName)
+
+    // Define SCM (Git)
+    def scm = new GitSCM(repoUrl)
+    scm.branches = [new BranchSpec("*/main")]
+    scm.extensions = []
+
+    // Define the pipeline definition from SCM
+    def definition = new CpsScmFlowDefinition(scm, scriptPath)
+    definition.setLightweight(true)
+
+    // Set the definition to the job
+    job.setDefinition(definition)
+
+    // Save the job
+    job.save()
+} else {
+    println("Job already exists: ${jobName}")
+}
