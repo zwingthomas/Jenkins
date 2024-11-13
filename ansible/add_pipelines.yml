@@ -1,27 +1,44 @@
 ---
-- name: Setup Jenkins Pipeline for text2site Repository
+- name: Setup Jenkins Pipeline for text2site Repository on Jenkins Server
   hosts: jenkins
   become: yes
-  collections:
-    - community.general
   vars_files:
     - credentials.yml
+  collections:
+    - community.general
 
   vars:
-    jenkins_host: "{{ inventory_hostname }}"  # Set to the current target host from inventory
-    jenkins_url: "http://{{ jenkins_host }}:8080"
+    jenkins_url: "http://localhost:8080"
     jenkins_username: "{{ jenkins_username }}"
     jenkins_password: "{{ jenkins_password }}"
-    jenkins_job_name: text2site-pipeline
-    github_repo_url: 'https://github.com/zwingthomas/text2site.git'
+    jenkins_job_name: "text2site-pipeline"
+    github_repo_url: "https://github.com/zwingthomas/text2site.git"
+    jenkins_plugins:
+      - git
+      - workflow-job
+      - workflow-cps
+      - scm-api
+    ansible_python_interpreter: "/usr/bin/python3"
 
   tasks:
+    - name: Ensure required packages are installed
+      apt:
+        name:
+          - git
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Install python-jenkins on the Jenkins server
+      pip:
+        name: python-jenkins
+        executable: pip3
 
     - name: Ensure Jenkins is installed
       apt:
         name: jenkins
         state: present
-      become: yes
+        update_cache: yes
 
     - name: Ensure Jenkins is running
       service:
@@ -38,36 +55,26 @@
         validate_certs: no
         status_code: 200
       register: jenkins_api
-      until: jenkins_api.status == 200
+      until: jenkins_api is succeeded
       retries: 10
       delay: 15
 
-    - name: Create Groovy script to create Jenkins job
-      template:
-        src: create_pipeline_job.groovy.j2
-        dest: "/tmp/create_pipeline_job.groovy"
-
-    - name: Execute Groovy script on Jenkins
-      jenkins_script:
+    - name: Install Jenkins plugins
+      community.general.jenkins_plugin:
+        name: "{{ jenkins_plugins }}"
+        state: present
         url: "{{ jenkins_url }}"
-        user: "{{ jenkins_username }}"
-        password: "{{ jenkins_password }}"
-        script: "{{ lookup('file', '/tmp/create_pipeline_job.groovy') }}"
-      register: groovy_script_result
+        url_username: "{{ jenkins_username }}"
+        url_password: "{{ jenkins_password }}"
+      register: installed_plugins
 
-    - name: Display Groovy script execution result
-      debug:
-        var: groovy_script_result
-
-    - name: Restart Jenkins service
+    - name: Restart Jenkins service if plugins were installed
       service:
         name: jenkins
         state: restarted
-      become: yes
-    
-    - name: Wait for Jenkins to be up and running
-      delegate_to: localhost
-      become: no
+      when: installed_plugins.changed
+
+    - name: Wait for Jenkins to be up and running after restart
       uri:
         url: "{{ jenkins_url }}/api/json"
         user: "{{ jenkins_username }}"
@@ -76,8 +83,30 @@
         validate_certs: no
         status_code: 200
       register: jenkins_api
-      until: jenkins_api.status == 200
+      until: jenkins_api is succeeded
       retries: 10
       delay: 15
 
+    - name: Create Jenkins job config XML
+      template:
+        src: job_config.xml.j2
+        dest: "/tmp/{{ jenkins_job_name }}.xml"
 
+    - name: Read Jenkins job config XML
+      slurp:
+        src: "/tmp/{{ jenkins_job_name }}.xml"
+      register: job_config_content
+
+    - name: Create Jenkins job on the Jenkins server
+      community.general.jenkins_job:
+        name: "{{ jenkins_job_name }}"
+        config: "{{ job_config_content.content | b64decode }}"
+        url: "{{ jenkins_url }}"
+        user: "{{ jenkins_username }}"
+        password: "{{ jenkins_password }}"
+        state: present
+      register: job_result
+
+    - name: Display Jenkins job creation result
+      debug:
+        var: job_result
