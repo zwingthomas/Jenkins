@@ -161,6 +161,72 @@
       - forensics-api                 # APIs for forensic analysis of builds
       - analysis-model-api            # API for integrating static analysis tools
 
+      # 2nd Gen
+      - git
+      - workflow-job
+      - workflow-cps
+      - scm-api
+      - github
+      - workflow-scm-step
+
+      # 3rd Gen
+      # Core plugins for pipelines and SCM
+      - git # Core Git plugin for SCM
+      - git-client # Git client for Jenkins Git plugin
+      - scm-api # SCM API for Jenkins to support SCM functionalities
+      - workflow-job # Enables pipeline jobs
+      - workflow-cps # Pipeline: Groovy CPS execution engine
+      - workflow-cps-global-lib # Pipeline: Shared Groovy Libraries
+      - workflow-scm-step # Pipeline: SCM Step for using SCM in pipeline scripts
+      - workflow-multibranch # Pipeline: Multibranch for handling multiple branches
+      - pipeline-stage-view # Provides a graphical view of pipeline stages
+      - pipeline-graph-analysis # Required for stage view and visualization of pipelines
+      - pipeline-rest-api # REST API for Jenkins pipelines
+      - pipeline-model-definition # Declarative pipeline syntax support
+
+      # Blue Ocean Plugins
+      - blueocean # Core Blue Ocean plugin for the modern UI
+      - blueocean-autofavorite # Automatically favorites the pipelines for Blue Ocean UI
+      - blueocean-pipeline-api-impl # Blue Ocean Pipeline API Implementation
+      - blueocean-pipeline-scm-api # SCM API for Blue Ocean
+      - blueocean-rest-impl # REST API Implementation for Blue Ocean
+      - blueocean-bitbucket-pipeline # Blue Ocean support for Bitbucket
+      - blueocean-github-pipeline # Blue Ocean support for GitHub
+      
+      # GitHub Plugins
+      - github # GitHub API support for Jenkins
+      - github-api # GitHub API Library
+      - github-branch-source # Allows multi-branch pipelines from GitHub
+
+      # Other core dependencies and required plugins
+      - kubernetes # Core Kubernetes plugin for Jenkins
+      - kubernetes-credentials # Manages Kubernetes credentials
+      - kubernetes-client-api # Kubernetes client API dependency
+      - branch-api # Handles multi-branch projects for SCM
+      - token-macro # Allows token replacement in plugin settings
+      - jakarta-mail-api # Jakarta Mail API
+      - jakarta-activation-api # Jakarta Activation API for email support
+      - mailer # For sending email notifications
+      - data-tables-api # Data tables API required by various plugins
+      - docker-commons # Common libraries for Docker plugins
+      - docker-workflow # Workflow plugin for Docker
+      - warnings-ng # Warnings Next Generation plugin for static analysis reports
+      - forensics-api # Forensics API used by various reporting plugins
+      - cobertura # Code coverage reporting for Jenkins
+      - code-coverage-api # API for code coverage reporting
+      - coverage # Required by the code-coverage-api
+      - gradle # Gradle build tool support
+      - bitbucket # Bitbucket API support
+      - slack # Slack notifications
+      - workflow-basic-steps # Basic steps for pipeline execution
+      - mina-sshd-api-core # Required SSHD core dependency
+      - mina-sshd-api-common # Required SSHD common dependency
+
+      # Optional but commonly used plugins (depending on your needs)
+      - ldap # LDAP plugin if you are using LDAP for authentication
+      - email-ext # Extended email notifications
+      - git-parameter # Provides Git parameter options for job configuration
+
   tasks:
 
     ### Install Jenkins Plugins
