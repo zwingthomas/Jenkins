@@ -227,6 +227,16 @@
       - email-ext # Extended email notifications
       - git-parameter # Provides Git parameter options for job configuration
 
+      # 4th Gen, more dependencies
+      - pipeline-model-api
+      - pipeline-model-extensions
+      - pipeline-stage-tags-metadata
+      - pubsub-light
+      - git-server
+      - jjwt-api
+      - mercurial
+      - favorite
+
   tasks:
 
     ### Install Jenkins Plugins

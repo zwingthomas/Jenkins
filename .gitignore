@@ -5,3 +5,4 @@ terraform/terraform.tfvars
 terraform/.terraform/
 ansible/credentials.yml
 ansible/auth_gcp.json
+vault_pass.txt

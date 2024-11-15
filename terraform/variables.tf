@@ -23,14 +23,3 @@ variable "instance_type" {
   description = "EC2 instance type for Jenkins server"
   default     = "t3.small"
 }
-
-variable "jenkins_admin_username" {
-  description = "Admin username for Jenkins"
-  type        = string
-  default     = "admin"
-}
-
-variable "jenkins_admin_password" {
-  description = "Admin password for Jenkins"
-  type        = string
-}
