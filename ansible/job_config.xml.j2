@@ -2,9 +2,42 @@
   <actions/>
   <description></description>
   <keepDependencies>false</keepDependencies>
-  <properties/>
-  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition">
-    <scm class="hudson.plugins.git.GitSCM">
+  
+  <!-- Define parameters here -->
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <!-- ACTION parameter -->
+        <hudson.model.ChoiceParameterDefinition>
+          <name>ACTION</name>
+          <description>Select action to perform</description>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>deploy</string>
+              <string>destroy</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+        
+        <!-- CLOUD_PROVIDER parameter -->
+        <hudson.model.ChoiceParameterDefinition>
+          <name>CLOUD_PROVIDER</name>
+          <description>Select cloud provider(s)</description>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>gcp</string>
+              <string>aws</string>
+              <string>azure</string>
+              <string>all</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps@2.94">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git@4.11.5">
       <configVersion>2</configVersion>
       <userRemoteConfigs>
         <hudson.plugins.git.UserRemoteConfig>
