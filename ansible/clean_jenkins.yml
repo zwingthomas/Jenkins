@@ -55,7 +55,4 @@
       tags: restart
 
   vars:
-    # unused_plugins:
-    #   - example-plugin1
-    #   - example-plugin2
     docker_present: "{{ (ansible_facts.packages['docker'] is defined) or (ansible_facts.services['docker'] is defined) }}"

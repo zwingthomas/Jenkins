@@ -56,34 +56,6 @@
       retries: 10
       delay: 15
 
-    # - name: Install Jenkins plugins
-    #   community.general.jenkins_plugin:
-    #     name: "{{ jenkins_plugins }}"
-    #     state: present
-    #     url: "{{ jenkins_url }}"
-    #     url_username: "{{ jenkins_username }}"
-    #     url_password: "{{ jenkins_password }}"
-    #   register: installed_plugins
-
-    # - name: Restart Jenkins service if plugins were installed
-    #   service:
-    #     name: jenkins
-    #     state: restarted
-    #   when: installed_plugins.changed
-
-    # - name: Wait for Jenkins to be up and running after restart
-    #   uri:
-    #     url: "{{ jenkins_url }}/api/json"
-    #     user: "{{ jenkins_username }}"
-    #     password: "{{ jenkins_password }}"
-    #     force_basic_auth: yes
-    #     validate_certs: no
-    #     status_code: 200
-    #   register: jenkins_api
-    #   until: jenkins_api is succeeded
-    #   retries: 10
-    #   delay: 15
-
     - name: Create Jenkins job config XML
       template:
         src: job_config.xml.j2

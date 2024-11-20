@@ -8,11 +8,12 @@
   vars_files:
     - credentials.yml
   vars:
+    jenkins_ip: "{{ inventory_hostname }}"  # Set to the current target host from inventory
     jenkins_admin_username: "{{ jenkins_username }}"
     jenkins_admin_password: "{{ jenkins_password }}"
 
   tasks:
-  
+
     - name: Update apt package list
       apt:
         update_cache: yes
