@@ -28,10 +28,6 @@ install_ansible() {
     fi
 }
 
-generate_ssh_keys() {
-
-}
-
 # Check if Terraform is installed
 if ! command -v terraform &> /dev/null; then
     install_terraform
