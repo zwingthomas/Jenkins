@@ -1,0 +1,169 @@
+---
+- name: Configure Vault server and upload credentials from credentials.yml
+  hosts: vault
+  become: yes
+  vars:
+    credentials_file: "./credentials.yml"
+
+  tasks:
+    - name: Install dependencies
+      apt:
+        update_cache: yes
+        name:
+          - unzip
+          - curl
+          - gnupg
+          - openssl
+          - jq
+
+    - name: Download Vault binary
+      get_url:
+        url: "https://releases.hashicorp.com/vault/1.15.3/vault_1.15.3_linux_amd64.zip"
+        dest: /tmp/vault.zip
+
+    - name: Install Vault
+      unarchive:
+        src: /tmp/vault.zip
+        dest: /usr/local/bin/
+        remote_src: yes
+
+    - name: Create Vault directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+        - /etc/vault
+        - /opt/vault/data
+
+    - name: Copy TLS certificate and key
+      copy:
+        content: "{{ lookup('file', '/path/to/vault.crt') }}"
+        dest: /etc/vault/vault.crt
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Copy TLS private key
+      copy:
+        content: "{{ lookup('file', '/path/to/vault.key') }}"
+        dest: /etc/vault/vault.key
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Create Vault configuration file
+      copy:
+        dest: /etc/vault/config.hcl
+        content: |
+          storage "file" {
+            path = "/opt/vault/data"
+          }
+
+          listener "tcp" {
+            address     = "0.0.0.0:8200"
+            tls_cert_file = "/etc/vault/vault.crt"
+            tls_key_file  = "/etc/vault/vault.key"
+          }
+
+          api_addr = "https://{{ ansible_host }}:8200"
+          cluster_addr = "https://{{ ansible_host }}:8201"
+          disable_mlock = true
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create Vault systemd service
+      copy:
+        dest: /etc/systemd/system/vault.service
+        content: |
+          [Unit]
+          Description=Vault
+          Requires=network-online.target
+          After=network-online.target
+
+          [Service]
+          ExecStart=/usr/local/bin/vault server -config=/etc/vault/config.hcl
+          ExecReload=/bin/kill --signal HUP $MAINPID
+          KillSignal=SIGTERM
+          Restart=on-failure
+          LimitNOFILE=65536
+
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Start and enable Vault
+      systemd:
+        name: vault
+        enabled: yes
+        state: started
+
+    - name: Wait for Vault to become ready
+      uri:
+        url: "https://{{ ansible_host }}:8200/v1/sys/health"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      retries: 10
+      delay: 5
+      register: vault_health
+
+    - name: Initialize Vault
+      shell: |
+        vault operator init -format=json
+      register: vault_init
+      args:
+        executable: /bin/bash
+
+    - name: Store Vault root token and unseal keys
+      copy:
+        content: "{{ vault_init.stdout }}"
+        dest: /root/vault_init.json
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Unseal Vault
+      shell: |
+        vault operator unseal {{ item }}
+      loop: "{{ vault_init.stdout | from_json | json_query('unseal_keys_b64') }}"
+      args:
+        executable: /bin/bash
+
+    - name: Log in to Vault
+      shell: |
+        vault login {{ vault_init.stdout | from_json | json_query('root_token') }}
+      register: vault_login
+      args:
+        executable: /bin/bash
+
+    - name: Load credentials from file
+      include_vars:
+        file: "{{ credentials_file }}"
+        name: loaded_credentials
+
+    - name: Load GCP credentials file content
+      slurp:
+        src: "{{ loaded_credentials.credentials['gcp-credentials-file'] }}"
+      register: gcp_file
+
+    - name: Upload credentials to Vault
+      uri:
+        url: "https://{{ ansible_host }}:8200/v1/secret/data/credentials"
+        method: POST
+        validate_certs: false
+        headers:
+          X-Vault-Token: "{{ vault_init.stdout | from_json | json_query('root_token') }}"
+          Content-Type: "application/json"
+        body: >
+          {{
+            {
+              "data": loaded_credentials.credentials | combine({
+                "gcp_credentials": gcp_file.content | b64decode | to_nice_json
+              })
+            } | to_json
+          }}
+        status_code: 200

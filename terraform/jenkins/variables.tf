@@ -11,12 +11,12 @@ variable "project_name" {
 variable "key_pair_name" {
   description = "Name of the existing EC2 Key Pair to enable SSH access"
   type        = string
-  default     = "my-ec2-keypair"  # Replace with your key pair name
+  default     = "my-ec2-keypair"
 }
 
 variable "allowed_cidr" {
   description = "CIDR blocks allowed to access Jenkins (e.g., your IP)"
-  default     = "0.0.0.0/0"  # Replace with your IP or CIDR block
+  default     = "0.0.0.0/0"
 }
 
 variable "instance_type" {

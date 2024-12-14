@@ -234,7 +234,6 @@
       - pubsub-light
       - git-server
       - jjwt-api
-      - mercurial
       - favorite
 
   tasks:
