@@ -65,6 +65,9 @@ generate_keypair() {
   echo "Generating new SSH key pair at: $key_path"
   ssh-keygen -t rsa -b 4096 -C longrunningjobs -f "$private_key" -N ""
 
+  # Set appropriate permissions to the file
+  chmod 777 ~/.ssh/${key_path}.pub
+
   # Verify key generation
   if [[ ! -f "$private_key" || ! -f "$public_key" ]]; then
     echo "Error: Key pair generation failed."
@@ -78,11 +81,27 @@ generate_keypair() {
 generate_keypair "${HOME}/.ssh/my-ec2-keypair"
 generate_keypair "${HOME}/.ssh/my-gce-keypair"
 
+# Function to run `terraform init` only if necessary
+terraform_init_if_needed() {
+    local terraform_dir="$1"
+
+    echo "Checking if terraform init is needed in: $terraform_dir"
+    if [ ! -d "$terraform_dir/.terraform" ]; then
+        echo "Terraform init required. Running terraform init..."
+        terraform init
+    else
+        echo "Terraform init not needed. Skipping."
+    fi
+}
+
+
 # Run terraform apply in the ./terraform/jenkins directory
 cd ./terraform/jenkins || { echo "Jenkins terraform directory not found!"; exit 1; }
 
 # Run terraform apply
 echo "Running terraform apply..."
+# Run terraform init if necessary
+terraform_init_if_needed "$(pwd)"
 terraform apply -lock=false -auto-approve
 
 # Extract the Jenkins server public IP using terraform output
@@ -102,7 +121,9 @@ cd ./terraform/vault || { echo "Vault terraform directory not found!"; exit 1; }
 
 # Run terraform apply
 echo "Running terraform apply..."
-terraform apply -lock=false -auto-approve
+# Run terraform init if necessary
+terraform_init_if_needed "$(pwd)"
+terraform apply -var="ssh_public_key_file=$(realpath ~/.ssh/my_gce_keypair.pub)"
 
 # Extract the Jenkins server public IP using terraform output
 VAULT_IP=$(terraform output -raw vault_server_public_ip)

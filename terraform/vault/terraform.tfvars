@@ -1,4 +1,3 @@
-project_id         = "your-gcp-project-id"
+project_id         = "evocative-reef-356219"
 region             = "us-central1"
 zone               = "us-central1-a"
-ssh_public_key_file = "/path/to/your/public-key.pub"

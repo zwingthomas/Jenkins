@@ -1,8 +1,10 @@
-terraform/terraform.tfstate.backup
-terraform/terraform.tfstate
-terraform/.terraform.lock.hcl
-terraform/terraform.tfvars
-terraform/.terraform/
+terraform/vault/.terraform.lock.hcl
+terraform/vault/.terraform
+terraform/vault/terraform.tfstate
+terraform/vault/terraform.tfvars
+terraform/jenkins/.terraform.lock.hcl
+terraform/jenkins/.terraform
+terraform/jenkins/terraform.tfstate
 ansible/credentials.yml
 ansible/auth_gcp.json
 vault_pass.txt

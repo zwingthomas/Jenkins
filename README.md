@@ -58,6 +58,12 @@ ansible-vault edit credentials.yml
 
 Edit will decrypt the ansible credentials in memory to allow you to update the file.
 
+Finally, you have to create a terraform.tfvars under ./terraform/vault:
+
+project_id         = "XXXXXXXXX-XXXX-XXXXXX"
+region             = "us-central1"
+zone               = "us-central1-a"
+
 
 ### Also important
 Register a domain and replace the APPLICATION_URL in your fork of the TEXT2SITE repository with your domain.

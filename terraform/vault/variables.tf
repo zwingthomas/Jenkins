@@ -46,5 +46,4 @@ variable "os_image" {
 variable "ssh_public_key_file" {
   description = "The path to the SSH public key file for accessing the Vault server"
   type        = string
-  default     = "~/.ssh/my_gce_keypair.pub"
 }
