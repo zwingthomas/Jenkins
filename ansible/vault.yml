@@ -12,6 +12,7 @@
     gcp_secret_name_prefix: "vault-unseal-key-"
   collections:
     - google.cloud
+    - community.general
 
   tasks:
     - name: Ensure GCP service account key file exists

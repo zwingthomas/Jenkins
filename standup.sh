@@ -152,7 +152,7 @@ HOSTS_FILE="./ansible/hosts.ini"
 echo "Updating Ansible hosts.ini file with Jenkins and Vault server IP..."
 cat > "$HOSTS_FILE" <<EOL
 [vault]
-$VAULT_IP ansible_user=ubuntu ansible_ssh_common_args='-o StrictHostKeyChecking=no' ansible_ssh_private_key_file=~/.ssh/my-gce-keypair ansible_python_interpreter=/usr/bin/python3.8
+$VAULT_IP ansible_user=ubuntu ansible_ssh_common_args='-o StrictHostKeyChecking=no' ansible_ssh_private_key_file=~/.ssh/my-gce-keypair
 
 [jenkins]
 $JENKINS_IP ansible_user=ubuntu ansible_ssh_common_args='-o StrictHostKeyChecking=no' ansible_ssh_private_key_file=~/.ssh/my-ec2-keypair
