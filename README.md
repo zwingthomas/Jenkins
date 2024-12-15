@@ -1,16 +1,24 @@
-### How to run
+### How to run on Mac OS
 
-sh standup.sh
----
-Go out to the Jenkins server and run the pipeline with the desired configuration.
----
-Check out the website.
----
-Run the destroy Jenkines pipeline to destroy the resources you stood up.
----
-sh teardown.sh
+1. sh standup.sh
+
+2. Go out to the Jenkins server and run the pipeline with the desired configuration.
+
+3. Check out the website.
+
+4. Run the destroy Jenkines pipeline to destroy the resources you stood up.
+
+5. sh teardown.sh
 
 ### Set up instructions
+
+Using pyenv do the following to ensure you are on the right version of Ansible:
+- pyenv virtualenv 3.11.6 ansible-11
+- pyenv activate ansible-11
+- pip install ansible==11.1.0
+- ansible --version
+- pip install google-auth google-api-python-client google-cloud-secret-manager
+- ansible-galaxy collection install google.cloud (requires version 1.4.1 or higher)
 
 Create an auth_gcp.json file in the ansible folder. It should look something like the below:
 

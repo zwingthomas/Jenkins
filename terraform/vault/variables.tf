@@ -34,7 +34,7 @@ variable "allowed_ssh_ip_ranges" {
 variable "machine_type" {
   description = "The machine type for the Vault server"
   type        = string
-  default     = "e2-medium"
+  default     = "e2-small"
 }
 
 variable "os_image" {
@@ -44,6 +44,7 @@ variable "os_image" {
 }
 
 variable "ssh_public_key_file" {
-  description = "The path to the SSH public key file for accessing the Vault server"
+  description = "The entire SSH public key file for accessing the Vault server"
   type        = string
+  default     = "/Users/thomaszwinger/.ssh/my-gce-keypair.pub"
 }

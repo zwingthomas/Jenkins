@@ -2,10 +2,48 @@
 - name: Configure Vault server and upload credentials from credentials.yml
   hosts: vault
   become: yes
+  vars_files:
+    - credentials.yml
   vars:
-    credentials_file: "./credentials.yml"
+    tls_cert_path: "/etc/vault/vault.crt"
+    tls_key_path: "/etc/vault/vault.key"
+    vault_config_path: "/etc/vault/config.hcl"
+    trusted_cert_store: "/usr/local/share/ca-certificates/vault.crt"
+    gcp_secret_name_prefix: "vault-unseal-key-"
+  collections:
+    - google.cloud
 
   tasks:
+    - name: Ensure GCP service account key file exists
+      stat:
+        path: "{{ credentials['gcp-credentials-file'] }}"
+      register: gcp_key_file
+      delegate_to: localhost
+      become: false
+
+    - name: Fail if GCP service account key file is missing
+      fail:
+        msg: "GCP service account key file not found at {{ credentials['gcp-credentials-file'] }}"
+      when: not gcp_key_file.stat.exists
+      delegate_to: localhost
+      become: false
+
+    - name: Export GOOGLE_APPLICATION_CREDENTIALS environment variable
+      ansible.builtin.shell: |
+        export GOOGLE_APPLICATION_CREDENTIALS={{ credentials['gcp-credentials-file'] }}
+      environment:
+        GOOGLE_APPLICATION_CREDENTIALS: "{{ credentials['gcp-credentials-file'] }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Ensure required packages are installed
+      apt:
+        name:
+          - git
+          - python3
+          - python3-pip
+        state: present
+
     - name: Install dependencies
       apt:
         update_cache: yes
@@ -15,6 +53,18 @@
           - gnupg
           - openssl
           - jq
+          - ca-certificates
+
+    - name: Install jmespath Python library
+      pip:
+        name: jmespath
+      become: yes
+
+    - name: Check jmespath installation
+      shell: python3 -m pip show jmespath
+      register: jmespath_check
+    - debug:
+        var: jmespath_check.stdout
 
     - name: Download Vault binary
       get_url:
@@ -36,25 +86,53 @@
         - /etc/vault
         - /opt/vault/data
 
-    - name: Copy TLS certificate and key
-      copy:
-        content: "{{ lookup('file', '/path/to/vault.crt') }}"
-        dest: /etc/vault/vault.crt
-        owner: root
-        group: root
-        mode: '0600'
+    - name: Generate private key for Vault
+      command: >
+        openssl genrsa -out {{ tls_key_path }} 4096
+      args:
+        creates: "{{ tls_key_path }}"
 
-    - name: Copy TLS private key
-      copy:
-        content: "{{ lookup('file', '/path/to/vault.key') }}"
-        dest: /etc/vault/vault.key
+    - name: Generate self-signed certificate for Vault
+      command: >
+        openssl req -new -x509
+        -key {{ tls_key_path }}
+        -out {{ tls_cert_path }}
+        -days 365
+        -subj "/C=US/ST=State/L=City/O=Organization/OU=IT/CN={{ ansible_host }}"
+        -addext "subjectAltName=DNS:{{ ansible_host }},IP:127.0.0.1"
+      args:
+        creates: "{{ tls_cert_path }}"
+
+    - name: Set permissions for TLS files
+      file:
+        path: "{{ item }}"
         owner: root
         group: root
         mode: '0600'
+      with_items:
+        - "{{ tls_key_path }}"
+        - "{{ tls_cert_path }}"
+
+    - name: Fetch Vault certificate to controller
+      fetch:
+        src: "{{ tls_cert_path }}"
+        dest: "/tmp/vault.crt"
+        flat: yes
+
+    - name: Copy Vault certificate to trusted store on the remote
+      copy:
+        src: "/tmp/vault.crt"
+        dest: "{{ trusted_cert_store }}"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Update trusted certificates
+      command: update-ca-certificates
 
     - name: Create Vault configuration file
       copy:
-        dest: /etc/vault/config.hcl
+        dest: "{{ vault_config_path }}"
         content: |
           storage "file" {
             path = "/opt/vault/data"
@@ -62,8 +140,8 @@
 
           listener "tcp" {
             address     = "0.0.0.0:8200"
-            tls_cert_file = "/etc/vault/vault.crt"
-            tls_key_file  = "/etc/vault/vault.key"
+            tls_cert_file = "{{ tls_cert_path }}"
+            tls_key_file  = "{{ tls_key_path }}"
           }
 
           api_addr = "https://{{ ansible_host }}:8200"
@@ -83,7 +161,7 @@
           After=network-online.target
 
           [Service]
-          ExecStart=/usr/local/bin/vault server -config=/etc/vault/config.hcl
+          ExecStart=/usr/local/bin/vault server -config={{ vault_config_path }}
           ExecReload=/bin/kill --signal HUP $MAINPID
           KillSignal=SIGTERM
           Restart=on-failure
@@ -101,69 +179,49 @@
         enabled: yes
         state: started
 
-    - name: Wait for Vault to become ready
+    - name: Wait for Vault to respond (sealed/uninitialized state allowed)
       uri:
         url: "https://{{ ansible_host }}:8200/v1/sys/health"
         method: GET
         validate_certs: false
-        status_code: 200
+        status_code: [200, 501, 503]
       retries: 10
       delay: 5
-      register: vault_health
+      register: vault_health_check
 
-    - name: Initialize Vault
+    - name: Initialize Vault (only if uninitialized)
       shell: |
         vault operator init -format=json
+      when: vault_health_check.json.initialized is defined and not vault_health_check.json.initialized
       register: vault_init
       args:
         executable: /bin/bash
+      failed_when: vault_init.rc != 0 and vault_init.stdout == ""
+      ignore_errors: false
 
-    - name: Store Vault root token and unseal keys
-      copy:
-        content: "{{ vault_init.stdout }}"
-        dest: /root/vault_init.json
-        owner: root
-        group: root
-        mode: '0600'
+    - name: Debug vault_init stdout
+      debug:
+        msg: "{{ vault_init.stdout | default('Undefined') }}"
+
+    - name: Store unseal keys and root token to Google Secret Manager
+      google.cloud.gcp_secret_manager:
+        project: "{{ credentials['gcp-project-id'] }}"
+        name: "{{ gcp_secret_name_prefix }}{{ item.key }}"
+        secret_data: "{{ item.value }}"
+        state: present
+      loop: >
+        {{
+          [
+            {"key": "unseal_keys", "value": vault_init.stdout | from_json | json_query('unseal_keys_b64')},
+            {"key": "root_token", "value": vault_init.stdout | from_json | json_query('root_token')}
+          ]
+        }}
+      when: vault_init is defined
 
     - name: Unseal Vault
       shell: |
         vault operator unseal {{ item }}
       loop: "{{ vault_init.stdout | from_json | json_query('unseal_keys_b64') }}"
+      when: vault_health_check.json.sealed
       args:
         executable: /bin/bash
-
-    - name: Log in to Vault
-      shell: |
-        vault login {{ vault_init.stdout | from_json | json_query('root_token') }}
-      register: vault_login
-      args:
-        executable: /bin/bash
-
-    - name: Load credentials from file
-      include_vars:
-        file: "{{ credentials_file }}"
-        name: loaded_credentials
-
-    - name: Load GCP credentials file content
-      slurp:
-        src: "{{ loaded_credentials.credentials['gcp-credentials-file'] }}"
-      register: gcp_file
-
-    - name: Upload credentials to Vault
-      uri:
-        url: "https://{{ ansible_host }}:8200/v1/secret/data/credentials"
-        method: POST
-        validate_certs: false
-        headers:
-          X-Vault-Token: "{{ vault_init.stdout | from_json | json_query('root_token') }}"
-          Content-Type: "application/json"
-        body: >
-          {{
-            {
-              "data": loaded_credentials.credentials | combine({
-                "gcp_credentials": gcp_file.content | b64decode | to_nice_json
-              })
-            } | to_json
-          }}
-        status_code: 200

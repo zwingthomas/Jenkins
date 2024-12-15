@@ -57,7 +57,9 @@ resource "google_compute_instance" "vault_server" {
   }
 
   metadata = {
-    ssh-keys = "ubuntu:${file(var.ssh_public_key_file)}"
+    ssh-keys = <<EOT
+ubuntu:${file(var.ssh_public_key_file)}
+EOT
   }
 
   tags = ["vault"]

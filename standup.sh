@@ -47,13 +47,16 @@ generate_keypair() {
 
   # Validate arguments
   if [[ -z "$key_path" ]]; then
-    echo "Usage: generate_gce_keypair <key_path> <username>"
+    echo "Usage: generate_keypair <key_path>"
     exit 1
   fi
 
   # Define the private and public key paths
   local private_key="${key_path}"
   local public_key="${key_path}.pub"
+
+  echo "Debug: private_key=${private_key}"
+  echo "Debug: public_key=${public_key}"
 
   # Overwrite existing keys if they exist
   if [[ -f "$private_key" || -f "$public_key" ]]; then
@@ -63,10 +66,7 @@ generate_keypair() {
 
   # Generate the SSH key pair
   echo "Generating new SSH key pair at: $key_path"
-  ssh-keygen -t rsa -b 4096 -C longrunningjobs -f "$private_key" -N ""
-
-  # Set appropriate permissions to the file
-  chmod 777 ~/.ssh/${key_path}.pub
+  ssh-keygen -t rsa -b 4096 -C ubuntu -f "$private_key" -N ""
 
   # Verify key generation
   if [[ ! -f "$private_key" || ! -f "$public_key" ]]; then
@@ -74,12 +74,20 @@ generate_keypair() {
     exit 1
   fi
 
-  echo "Key pair generated successfully."
+  # Set appropriate permissions
+  chmod 600 "$private_key"
+  chmod 644 "$public_key"
+
+  echo "Key pair generated successfully: $private_key and $public_key"
 }
 
 # Generate keypairs for ansible access
-generate_keypair "${HOME}/.ssh/my-ec2-keypair"
-generate_keypair "${HOME}/.ssh/my-gce-keypair"
+if [[ ! -f "${HOME}/.ssh/my-ec2-keypair" ]]; then
+    generate_keypair "${HOME}/.ssh/my-ec2-keypair"
+fi
+if [[ ! -f "${HOME}/.ssh/my-gce-keypair" ]]; then
+    generate_keypair "${HOME}/.ssh/my-gce-keypair"
+fi
 
 # Function to run `terraform init` only if necessary
 terraform_init_if_needed() {
@@ -123,7 +131,7 @@ cd ./terraform/vault || { echo "Vault terraform directory not found!"; exit 1; }
 echo "Running terraform apply..."
 # Run terraform init if necessary
 terraform_init_if_needed "$(pwd)"
-terraform apply -var="ssh_public_key_file=$(realpath ~/.ssh/my_gce_keypair.pub)"
+terraform apply -var="ssh_public_key_file=/Users/thomaszwinger/.ssh/my-gce-keypair.pub" -auto-approve -lock=false
 
 # Extract the Jenkins server public IP using terraform output
 VAULT_IP=$(terraform output -raw vault_server_public_ip)
@@ -141,19 +149,20 @@ cd ../..
 # Update the Ansible hosts.ini file with the Jenkins IP
 HOSTS_FILE="./ansible/hosts.ini"
 
-echo "Updating Ansible hosts.ini file with Jenkins server IP..."
+echo "Updating Ansible hosts.ini file with Jenkins and Vault server IP..."
 cat > "$HOSTS_FILE" <<EOL
 [vault]
-$VAULT_IP ansible_user=ubuntu
+$VAULT_IP ansible_user=ubuntu ansible_ssh_common_args='-o StrictHostKeyChecking=no' ansible_ssh_private_key_file=~/.ssh/my-gce-keypair ansible_python_interpreter=/usr/bin/python3.8
 
 [jenkins]
-$JENKINS_IP ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+$JENKINS_IP ansible_user=ubuntu ansible_ssh_common_args='-o StrictHostKeyChecking=no' ansible_ssh_private_key_file=~/.ssh/my-ec2-keypair
 
 [local]
-localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+localhost ansible_connection=local
 EOL
 
 echo "Ansible hosts.ini file updated."
+cat "$HOSTS_FILE"
 
 # Function to wait for SSH to become available
 wait_for_ssh() {
@@ -170,10 +179,12 @@ wait_for_ssh() {
 
 # Wait for SSH to be available on the Jenkins and Vault servers
 wait_for_ssh "$JENKINS_IP"
+echo "Jenkins host can be accessed via SSH"
 wait_for_ssh "$VAULT_IP"
+echo "Vault host can be accessed via SSH"
 
 # Run the ansible-playbook commands with the provided Vault password using process substitution
-ANSIBLE_PLAYBOOK="ansible-playbook -i ./ansible/hosts.ini --private-key ~/.ssh/my-ec2-keypair -u ubuntu"
+ANSIBLE_PLAYBOOK="ansible-playbook -i ./ansible/hosts.ini -u ubuntu"
 
 # Use process substitution to pass the Vault password without creating a file
 $ANSIBLE_PLAYBOOK ./ansible/vault.yml
