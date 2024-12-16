@@ -61,6 +61,16 @@
         name: jmespath
       become: yes
 
+    - name: Install google-auth Python library
+      pip:
+        name: google-auth
+      become: yes
+    
+    - name: Install requests Python library
+      pip:
+        name: requests
+      become: yes
+
     - name: Check jmespath installation
       shell: python3 -m pip show jmespath
       register: jmespath_check
@@ -206,10 +216,14 @@
 
     - name: Store unseal keys and root token to Google Secret Manager
       google.cloud.gcp_secret_manager:
-        project: "{{ credentials['gcp-project-id'] }}"
+        project: "{{ credentials['gcp-project'] }}"
         name: "{{ gcp_secret_name_prefix }}{{ item.key }}"
-        secret_data: "{{ item.value }}"
+        value: "{{ item.value | join('\n') if item.key == 'unseal_keys' else item.value }}"
         state: present
+        auth_kind: serviceaccount
+        service_account_file: "{{ credentials['gcp-credentials-file'] }}"
+      delegate_to: localhost
+      become: false
       loop: >
         {{
           [

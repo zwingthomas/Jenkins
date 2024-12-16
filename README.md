@@ -15,7 +15,7 @@
 Using pyenv do the following to ensure you are on the right version of Ansible:
 - pyenv virtualenv 3.11.6 ansible-11
 - pyenv activate ansible-11
-- pip install ansible==11.1.0
+- pip install ansible==11.1.0 google-auth (and some jwemes thing) requests
 - ansible --version
 - pip install google-auth google-api-python-client google-cloud-secret-manager
 - ansible-galaxy collection install google.cloud (requires version 1.4.1 or higher)
