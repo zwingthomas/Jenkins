@@ -1,0 +1,17 @@
+- name: Create python environment locally
+  hosts: localhost
+  tasks:
+    - name: Create a virtual environment on localhost
+      command: python3 -m venv /tmp/ansible_venv
+
+    - name: Install requirements in the virtual environment on localhost
+      command: /tmp/ansible_venv/bin/pip install google-auth jmespath requests google-api-python-client google-cloud-secret-manager
+
+    - name: Set ansible_python_interpreter to use the virtual environment Python on localhost
+      set_fact:
+        ansible_python_interpreter: /tmp/ansible_venv/bin/python
+      delegate_facts: true
+    
+    - name: Show the Python interpreter used by Ansible
+      debug:
+        var: ansible_python_interpreter

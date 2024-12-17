@@ -140,7 +140,7 @@ if [ -z "$VAULT_IP" ]; then
     echo "Failed to retrieve Vault server public IP from Terraform outputs."
     exit 1
 else
-    echo "Jenkins server public IP: $VAULT_IP"
+    echo "Vault server public IP: $VAULT_IP"
 fi
 
 # Return to the base directory
@@ -158,7 +158,7 @@ $VAULT_IP ansible_user=ubuntu ansible_ssh_common_args='-o StrictHostKeyChecking=
 $JENKINS_IP ansible_user=ubuntu ansible_ssh_common_args='-o StrictHostKeyChecking=no' ansible_ssh_private_key_file=~/.ssh/my-ec2-keypair
 
 [local]
-localhost ansible_connection=local
+localhost ansible_connection=local ansible_python_interpreter=/tmp/ansible_venv/bin/python
 EOL
 
 echo "Ansible hosts.ini file updated."
@@ -187,7 +187,9 @@ echo "Vault host can be accessed via SSH"
 ANSIBLE_PLAYBOOK="ansible-playbook -i ./ansible/hosts.ini -u ubuntu"
 
 # Use process substitution to pass the Vault password without creating a file
-$ANSIBLE_PLAYBOOK ./ansible/vault.yml
+$ANSIBLE_PLAYBOOK ./ansible/localhost.yml
+pip install requests google-auth jmespath google-api-python-client google-cloud-secret-manager
+$ANSIBLE_PLAYBOOK ./ansible/vault.yml --vault-password-file=vault_pass.txt
 $ANSIBLE_PLAYBOOK ./ansible/install_jenkins.yml --vault-password-file=vault_pass.txt
 $ANSIBLE_PLAYBOOK ./ansible/plugins_jenkins.yml
 $ANSIBLE_PLAYBOOK ./ansible/auth_jenkins.yml --vault-password-file=vault_pass.txt

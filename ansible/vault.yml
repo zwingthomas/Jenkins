@@ -10,11 +10,37 @@
     vault_config_path: "/etc/vault/config.hcl"
     trusted_cert_store: "/usr/local/share/ca-certificates/vault.crt"
     gcp_secret_name_prefix: "vault-unseal-key-"
+    vault_base_path: "secret/mycredentials"
   collections:
     - google.cloud
     - community.general
 
   tasks:
+
+    - name: Install dependencies
+      apt:
+        update_cache: yes
+        name:
+          - unzip
+          - curl
+          - gnupg
+          - openssl
+          - jq
+          - ca-certificates
+          - python3-venv
+    
+    - name: Create a virtual environment on remote
+      become: false
+      command: python3 -m venv /tmp/ansible_venv
+    
+    - name: Set ansible_python_interpreter to use the virtual environment Python on remote
+      set_fact:
+        ansible_python_interpreter: /tmp/ansible_venv/bin/python
+
+    - name: Install requirements in the virtual environment on remote
+      become: false
+      command: /tmp/ansible_venv/bin/pip install google-auth jmespath requests google-api-python-client google-cloud-secret-manager
+        
     - name: Ensure GCP service account key file exists
       stat:
         path: "{{ credentials['gcp-credentials-file'] }}"
@@ -36,46 +62,6 @@
         GOOGLE_APPLICATION_CREDENTIALS: "{{ credentials['gcp-credentials-file'] }}"
       delegate_to: localhost
       become: false
-
-    - name: Ensure required packages are installed
-      apt:
-        name:
-          - git
-          - python3
-          - python3-pip
-        state: present
-
-    - name: Install dependencies
-      apt:
-        update_cache: yes
-        name:
-          - unzip
-          - curl
-          - gnupg
-          - openssl
-          - jq
-          - ca-certificates
-
-    - name: Install jmespath Python library
-      pip:
-        name: jmespath
-      become: yes
-
-    - name: Install google-auth Python library
-      pip:
-        name: google-auth
-      become: yes
-    
-    - name: Install requests Python library
-      pip:
-        name: requests
-      become: yes
-
-    - name: Check jmespath installation
-      shell: python3 -m pip show jmespath
-      register: jmespath_check
-    - debug:
-        var: jmespath_check.stdout
 
     - name: Download Vault binary
       get_url:
@@ -110,7 +96,7 @@
         -out {{ tls_cert_path }}
         -days 365
         -subj "/C=US/ST=State/L=City/O=Organization/OU=IT/CN={{ ansible_host }}"
-        -addext "subjectAltName=DNS:{{ ansible_host }},IP:127.0.0.1"
+        -addext "subjectAltName=IP:{{ ansible_host }},IP:127.0.0.1"
       args:
         creates: "{{ tls_cert_path }}"
 
@@ -194,26 +180,31 @@
       uri:
         url: "https://{{ ansible_host }}:8200/v1/sys/health"
         method: GET
-        validate_certs: false
         status_code: [200, 501, 503]
       retries: 10
       delay: 5
       register: vault_health_check
 
+    # If vault is not initialized, initialize it and store secrets:
     - name: Initialize Vault (only if uninitialized)
       shell: |
         vault operator init -format=json
-      when: vault_health_check.json.initialized is defined and not vault_health_check.json.initialized
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == false
       register: vault_init
       args:
         executable: /bin/bash
       failed_when: vault_init.rc != 0 and vault_init.stdout == ""
       ignore_errors: false
 
-    - name: Debug vault_init stdout
-      debug:
-        msg: "{{ vault_init.stdout | default('Undefined') }}"
+    - name: Copy GCP credentials file to remote server
+      copy:
+        src: auth_gcp.json
+        dest: /etc/vault/auth_gcp.json
+        owner: root
+        group: root
+        mode: '0600'
 
+    # Store unseal keys and root token if Vault was just initialized
     - name: Store unseal keys and root token to Google Secret Manager
       google.cloud.gcp_secret_manager:
         project: "{{ credentials['gcp-project'] }}"
@@ -221,9 +212,7 @@
         value: "{{ item.value | join('\n') if item.key == 'unseal_keys' else item.value }}"
         state: present
         auth_kind: serviceaccount
-        service_account_file: "{{ credentials['gcp-credentials-file'] }}"
-      delegate_to: localhost
-      become: false
+        service_account_file: /etc/vault/auth_gcp.json
       loop: >
         {{
           [
@@ -233,10 +222,114 @@
         }}
       when: vault_init is defined
 
-    - name: Unseal Vault
+    - name: Remove GCP credentials file from remote
+      file:
+        path: /etc/vault/auth_gcp.json
+        state: absent
+      when: vault_init is defined
+
+    # If Vault was already initialized, retrieve keys from GCP Secret Manager
+    - name: Re-copy GCP credentials file to remote server (for retrieval)
+      copy:
+        src: auth_gcp.json
+        dest: /etc/vault/auth_gcp.json
+        owner: root
+        group: root
+        mode: '0600'
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+
+    - name: Retrieve unseal_keys from GCP if already initialized
+      google.cloud.gcp_secret_manager:
+        project: "{{ credentials['gcp-project'] }}"
+        name: "{{ gcp_secret_name_prefix }}unseal_keys"
+        auth_kind: serviceaccount
+        service_account_file: /etc/vault/auth_gcp.json
+        state: present
+        read: true
+      register: retrieved_unseal_keys
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+
+    - name: Retrieve root_token from GCP if already initialized
+      google.cloud.gcp_secret_manager:
+        project: "{{ credentials['gcp-project'] }}"
+        name: "{{ gcp_secret_name_prefix }}root_token"
+        auth_kind: serviceaccount
+        service_account_file: /etc/vault/auth_gcp.json
+        state: present
+        read: true
+      register: retrieved_root_token
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+
+    - name: Remove GCP credentials file from remote (after retrieval)
+      file:
+        path: /etc/vault/auth_gcp.json
+        state: absent
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+
+    # Unseal Vault if sealed, using retrieved keys if previously initialized
+    - name: Unseal Vault (if previously initialized and sealed)
       shell: |
         vault operator unseal {{ item }}
-      loop: "{{ vault_init.stdout | from_json | json_query('unseal_keys_b64') }}"
+      loop: "{{ (vault_init is defined) | ternary((vault_init.stdout | from_json | json_query('unseal_keys_b64')), (retrieved_unseal_keys.value.split('\n'))) }}"
       when: vault_health_check.json.sealed
+      args:
+        executable: /bin/bash
+
+    # Set root_token fact (either from new init or from retrieval)
+    - name: Set vault_root_token fact
+      set_fact:
+        vault_root_token: "{{ (vault_init is defined) | ternary((vault_init.stdout | from_json | json_query('root_token')), retrieved_root_token.value) }}"
+
+    # Write policy for KV v2 (Adjust paths for v2 if needed)
+    - name: Write policy to allow create/update/read on secret/mycredentials/*
+      shell: |
+        export VAULT_ADDR="https://{{ ansible_host }}:8200"
+        export VAULT_TOKEN="{{ vault_root_token }}"
+        cat > /tmp/mycreds-policy.hcl <<EOF
+        path "secret/data/mycredentials/*" {
+          capabilities = ["create", "update", "read"]
+        }
+
+        path "secret/metadata/mycredentials/*" {
+          capabilities = ["list", "create", "update", "read"]
+        }
+        EOF
+        vault policy write mycreds-policy /tmp/mycreds-policy.hcl
+      args:
+        executable: /bin/bash
+
+    - name: Create token with mycreds-policy
+      shell: |
+        export VAULT_ADDR="https://{{ ansible_host }}:8200"
+        export VAULT_TOKEN="{{ vault_root_token }}"
+        vault token create -policy=mycreds-policy -format=json
+      register: new_token
+      args:
+        executable: /bin/bash
+
+    - name: Set VAULT_TOKEN for subsequent tasks
+      set_fact:
+        mycreds_token: "{{ new_token.stdout | from_json | json_query('auth.client_token') }}"
+
+    - name: Export VAULT_TOKEN environment variable
+      set_fact:
+        vault_env: {"VAULT_ADDR": "https://{{ ansible_host }}:8200", "VAULT_TOKEN": "{{ mycreds_token }}"}
+
+    - name: Write credentials to Vault
+      include_tasks: vault_write.yml
+      loop: "{{ credentials | dict2items }}"
+      loop_control:
+        loop_var: item
+
+    - name: Load GCP credentials file content from localhost
+      delegate_to: localhost
+      become: false
+      slurp:
+        src: "{{ credentials['gcp-credentials-file'] }}"
+      register: gcp_creds_file
+
+    - name: Write GCP credentials file content to Vault
+      shell: >
+        vault kv put {{ vault_base_path }}/gcp-credentials-file value="{{ gcp_creds_file.content | b64decode }}"
       args:
         executable: /bin/bash

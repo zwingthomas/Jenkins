@@ -1,0 +1,23 @@
+- name: Set current key/value facts
+  set_fact:
+    current_key: "{{ item.key }}"
+    current_value: "{{ item.value }}"
+
+- name: Write dictionary values into Vault (one per key)
+  loop: "{{ current_value | dict2items }}"
+  loop_control:
+    loop_var: cred_item
+  shell: >
+    vault kv put {{ vault_base_path }}/{{ current_key }}/{{ cred_item.key }} value="{{ cred_item.value }}"
+  when: current_value is mapping
+  args:
+    executable: /bin/bash
+  environment: "{{ vault_env }}"
+
+- name: Write single value into Vault
+  shell: >
+    vault kv put {{ vault_base_path }}/{{ current_key }} value="{{ current_value }}"
+  when: current_value is not mapping
+  args:
+    executable: /bin/bash
+  environment: "{{ vault_env }}"
