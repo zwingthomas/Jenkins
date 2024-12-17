@@ -25,6 +25,7 @@
   args:
     executable: /bin/bash
   environment: "{{ vault_env }}"
+  no_log: true
 
 # Write each key of the dictionary into Vault
 - name: Write dictionary values into Vault (one per key)
@@ -51,3 +52,4 @@
   args:
     executable: /bin/bash
   environment: "{{ vault_env }}"
+  no_log: true

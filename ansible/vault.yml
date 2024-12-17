@@ -301,7 +301,7 @@
     # Set root_token fact (either from new init or from retrieval)
     - name: Set vault_root_token fact from vault init
       set_fact:
-        vault_root_token: "{{ (vault_init is defined) | ternary(vault_init.stdout | from_json | json_query('root_token')) }}"
+        vault_root_token: "{{ vault_init.stdout | from_json | json_query('root_token') }}"
       when:
         - vault_init is defined and (vault_init.stdout | default('') | length) > 0
     
@@ -410,6 +410,7 @@
         vault policy write mycreds-policy /tmp/mycreds-policy.hcl
       args:
         executable: /bin/bash
+      no_log: true
 
     - name: Create token with mycreds-policy
       shell: |
@@ -433,7 +434,7 @@
       loop: "{{ credentials | dict2items }}"
       loop_control:
         loop_var: item
-      no_log: true 
+      no_log: true
 
     - name: Load GCP credentials file content from localhost
       delegate_to: localhost
@@ -441,6 +442,7 @@
       slurp:
         src: "{{ credentials['gcp-credentials-file'] }}"
       register: gcp_creds_file
+      no_log: true
 
     - name: Write GCP credentials file content to Vault using the uri module
       uri:
@@ -454,6 +456,7 @@
         validate_certs: false
       register: gcp_creds_vault_response
       environment: "{{ vault_env }}"
+      no_log: true
     
     - name: Remove temporary policy file
       file:
