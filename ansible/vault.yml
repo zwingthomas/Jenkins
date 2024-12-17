@@ -433,6 +433,7 @@
       loop: "{{ credentials | dict2items }}"
       loop_control:
         loop_var: item
+      no_log: true 
 
     - name: Load GCP credentials file content from localhost
       delegate_to: localhost
@@ -441,8 +442,20 @@
         src: "{{ credentials['gcp-credentials-file'] }}"
       register: gcp_creds_file
 
-    - name: Write GCP credentials file content to Vault
-      shell: >
-        vault kv put {{ vault_base_path_cli }}/gcp-credentials-file value="{{ gcp_creds_file.content | b64decode }}"
-      args:
-        executable: /bin/bash
+    - name: Write GCP credentials file content to Vault using the uri module
+      uri:
+        url: "https://{{ ansible_host }}:8200/v1/{{ vault_base_path_api }}/gcp-credentials-file"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ mycreds_token }}"
+          Content-Type: "application/json"
+        body: "{{ {'data': {'value': gcp_creds_file.content | b64decode }} | to_json }}"
+        body_format: json
+        validate_certs: false
+      register: gcp_creds_vault_response
+      environment: "{{ vault_env }}"
+    
+    - name: Remove temporary policy file
+      file:
+        path: /tmp/mycreds-policy.hcl
+        state: absent

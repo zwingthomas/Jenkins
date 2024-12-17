@@ -39,6 +39,7 @@
   args:
     executable: /bin/bash
   environment: "{{ vault_env }}"
+  no_log: true 
 
 # If current_value is not a dictionary, just write a single value
 - name: Write single value into Vault
