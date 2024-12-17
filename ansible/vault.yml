@@ -10,7 +10,9 @@
     vault_config_path: "/etc/vault/config.hcl"
     trusted_cert_store: "/usr/local/share/ca-certificates/vault.crt"
     gcp_secret_name_prefix: "vault-unseal-key-"
-    vault_base_path: "secret/mycredentials"
+    vault_base_path_cli: "secret/mycredentials"
+    vault_base_path_api: "secret/data/mycredentials"
+    vault_base_path_api_metadata: "secret/metadata/mycredentials"
   collections:
     - google.cloud
     - community.general
@@ -203,6 +205,7 @@
         owner: root
         group: root
         mode: '0600'
+      when: vault_init is defined and (vault_init.stdout | default('') | length) > 0
 
     # Store unseal keys and root token if Vault was just initialized
     - name: Store unseal keys and root token to Google Secret Manager
@@ -220,13 +223,13 @@
             {"key": "root_token", "value": vault_init.stdout | from_json | json_query('root_token')}
           ]
         }}
-      when: vault_init is defined
+      when: vault_init is defined and (vault_init.stdout | default('') | length) > 0
 
     - name: Remove GCP credentials file from remote
       file:
         path: /etc/vault/auth_gcp.json
         state: absent
-      when: vault_init is defined
+      when: vault_init is defined and (vault_init.stdout | default('') | length) > 0
 
     # If Vault was already initialized, retrieve keys from GCP Secret Manager
     - name: Re-copy GCP credentials file to remote server (for retrieval)
@@ -236,7 +239,7 @@
         owner: root
         group: root
         mode: '0600'
-      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true and (vault_init is not defined or (vault_init.stdout | default('') | length) == 0)
 
     - name: Retrieve unseal_keys from GCP if already initialized
       google.cloud.gcp_secret_manager:
@@ -245,9 +248,9 @@
         auth_kind: serviceaccount
         service_account_file: /etc/vault/auth_gcp.json
         state: present
-        read: true
+        return_value: yes
       register: retrieved_unseal_keys
-      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true and (vault_init is not defined or (vault_init.stdout | default('') | length) == 0)
 
     - name: Retrieve root_token from GCP if already initialized
       google.cloud.gcp_secret_manager:
@@ -256,29 +259,135 @@
         auth_kind: serviceaccount
         service_account_file: /etc/vault/auth_gcp.json
         state: present
-        read: true
+        return_value: yes
       register: retrieved_root_token
-      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true and (vault_init is not defined or (vault_init.stdout | default('') | length) == 0)
 
     - name: Remove GCP credentials file from remote (after retrieval)
       file:
         path: /etc/vault/auth_gcp.json
         state: absent
-      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true
+      when: vault_health_check.json.initialized is defined and vault_health_check.json.initialized == true and (vault_init is not defined or (vault_init.stdout | default('') | length) == 0)
 
-    # Unseal Vault if sealed, using retrieved keys if previously initialized
-    - name: Unseal Vault (if previously initialized and sealed)
+    # If Vault was just initialized:
+    - name: Set unseal_keys_list from vault_init
+      set_fact:
+        unseal_keys_list: "{{ vault_init.stdout | from_json | json_query('unseal_keys_b64') }}"
+      when:
+        - vault_health_check.json.sealed
+        - (vault_init.stdout | default('') | length) > 0
+
+    # If Vault was previously initialized and we've retrieved keys from GCP:
+    - name: Set unseal_keys_list from retrieved_unseal_keys
+      set_fact:
+        unseal_keys_list: "{{ retrieved_unseal_keys.value.split('\n') }}"
+      when:
+        - vault_health_check.json.sealed
+        - (vault_init.stdout | default('') | length) == 0
+        - retrieved_unseal_keys is defined
+
+    # Now use unseal_keys_list in the loop without ternary logic:
+    - name: Unseal Vault if sealed
       shell: |
         vault operator unseal {{ item }}
-      loop: "{{ (vault_init is defined) | ternary((vault_init.stdout | from_json | json_query('unseal_keys_b64')), (retrieved_unseal_keys.value.split('\n'))) }}"
-      when: vault_health_check.json.sealed
       args:
         executable: /bin/bash
+      loop: "{{ unseal_keys_list }}"
+      when:
+        - vault_health_check.json.sealed
+        - unseal_keys_list is defined
+        - unseal_keys_list|length > 0
 
     # Set root_token fact (either from new init or from retrieval)
-    - name: Set vault_root_token fact
+    - name: Set vault_root_token fact from vault init
       set_fact:
-        vault_root_token: "{{ (vault_init is defined) | ternary((vault_init.stdout | from_json | json_query('root_token')), retrieved_root_token.value) }}"
+        vault_root_token: "{{ (vault_init is defined) | ternary(vault_init.stdout | from_json | json_query('root_token')) }}"
+      when:
+        - vault_init is defined and (vault_init.stdout | default('') | length) > 0
+    
+    - name: Set vault_root_token fact from retrival
+      set_fact:
+        vault_root_token: "{{ retrieved_root_token.value }}"
+      when:
+        - vault_root_token is not defined
+
+    - name: Get the list of mounted secrets engines
+      uri:
+        url: "https://{{ ansible_host }}:8200/v1/sys/mounts"
+        method: GET
+        validate_certs: false
+        return_content: yes
+        headers:
+          X-Vault-Token: "{{ vault_root_token }}"
+      register: mounts_info
+
+    - name: Parse mounts_info as JSON
+      set_fact:
+        parsed_mounts: "{{ mounts_info.content | from_json }}"
+      
+    - name: Debug parsed_mounts
+      debug:
+        var: parsed_mounts
+
+    - name: Extract kv2 mount path
+      set_fact:
+        kv_mount_path: "{{ parsed_mounts.data | dict2items 
+                          | selectattr('value.type','equalto','kv') 
+                          | selectattr('value.options.version','equalto','2') 
+                          | map(attribute='key') 
+                          | list 
+                          | first }}"
+      ignore_errors: true
+
+    # Enable the secrets engine
+    - name: Enable KV v2 secrets engine at secret/
+      shell: |
+        export VAULT_ADDR="https://{{ ansible_host }}:8200"
+        export VAULT_TOKEN="{{ vault_root_token }}"
+        vault secrets enable -path=secret -version=2 kv
+      args:
+        executable: /bin/bash
+      environment:
+        VAULT_ADDR: "https://{{ ansible_host }}:8200"
+        VAULT_TOKEN: "{{ vault_root_token }}"
+      when: kv_mount_path is not defined
+
+    - name: Get the list of mounted secrets engines
+      uri:
+        url: "https://{{ ansible_host }}:8200/v1/sys/mounts"
+        method: GET
+        validate_certs: false
+        return_content: yes
+        headers:
+          X-Vault-Token: "{{ vault_root_token }}"
+      register: mounts_info
+      when: kv_mount_path is not defined
+
+    - name: Parse mounts_info as JSON
+      set_fact:
+        parsed_mounts: "{{ mounts_info.content | from_json }}"
+      when: kv_mount_path is not defined
+      
+    - name: Debug parsed_mounts
+      debug:
+        var: parsed_mounts
+      when: kv_mount_path is not defined
+
+    - name: Extract kv2 mount path
+      set_fact:
+        kv_mount_path: "{{ parsed_mounts.data | dict2items 
+                          | selectattr('value.type','equalto','kv') 
+                          | selectattr('value.options.version','equalto','2') 
+                          | map(attribute='key') 
+                          | list 
+                          | first }}"
+      ignore_errors: false
+
+    - name: Set vault_base_path variables dynamically
+      set_fact:
+        vault_base_path_cli: "{{ kv_mount_path }}mycredentials"
+        vault_base_path_api: "{{ kv_mount_path }}data/mycredentials"
+        vault_base_path_api_metadata: "{{ kv_mount_path }}metadata/mycredentials"
 
     # Write policy for KV v2 (Adjust paths for v2 if needed)
     - name: Write policy to allow create/update/read on secret/mycredentials/*
@@ -286,11 +395,15 @@
         export VAULT_ADDR="https://{{ ansible_host }}:8200"
         export VAULT_TOKEN="{{ vault_root_token }}"
         cat > /tmp/mycreds-policy.hcl <<EOF
-        path "secret/data/mycredentials/*" {
-          capabilities = ["create", "update", "read"]
+        path "{{ vault_base_path_cli }}/*" {
+          capabilities = ["read", "list", "create", "update"]
         }
 
-        path "secret/metadata/mycredentials/*" {
+        path "{{ vault_base_path_api }}/*" {
+          capabilities = ["list", "create", "update", "read"]
+        }
+
+        path "{{ vault_base_path_api_metadata }}/*" {
           capabilities = ["list", "create", "update", "read"]
         }
         EOF
@@ -330,6 +443,6 @@
 
     - name: Write GCP credentials file content to Vault
       shell: >
-        vault kv put {{ vault_base_path }}/gcp-credentials-file value="{{ gcp_creds_file.content | b64decode }}"
+        vault kv put {{ vault_base_path_cli }}/gcp-credentials-file value="{{ gcp_creds_file.content | b64decode }}"
       args:
         executable: /bin/bash
