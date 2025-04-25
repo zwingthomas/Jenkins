@@ -38,6 +38,7 @@
 
       # Cloud and environment-specific integrations
       - aws-java-sdk-ec2              # AWS SDK for EC2 interactions
+      - aws-java-sdk2-ec2             # AWS SDK for EC2 interactions, required for credentials
       - aws-java-sdk-minimal          # Minimal AWS SDK for core services
       - azure-sdk                     # SDK for Azure integrations
       - docker-plugin                 # Docker integration for containers and image builds
