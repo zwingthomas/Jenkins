@@ -1,283 +1,116 @@
-- name: Setup Jenkins server with AWS CLI v2, Terraform, and Docker
+---
+- name: Setup Jenkins with AWS-CLI v2, Terraform, Docker and plugins
   hosts: jenkins
-  become: yes
+  become: true
 
   vars:
+    jenkins_home: /var/lib/jenkins
+    plugin_cli_version: 2.12.9                       # update as needed
+    plugin_cli_jar: /usr/local/bin/jenkins-plugin-cli.jar
+
     jenkins_plugins:
-      # Core credentials management
-      - aws-credentials               # AWS credentials management for Jenkins
-      - plain-credentials             # Secure storage of plain text credentials
-      - azure-credentials             # Azure credentials management
-      - credentials                   # Core Jenkins credentials management library
-      - credentials-binding           # Bind credentials to environment variables in builds
-      - ssh-credentials               # SSH credentials management for SSH-based integrations
+      # Credentials / Cloud
+      - aws-credentials
+      - credentials
+      - plain-credentials
+      - azure-credentials
+      - ssh-credentials
 
-      # Workflow and pipeline support
-      - workflow-api                  # API for building pipeline plugins
-      - workflow-step-api             # API for defining pipeline steps
-      - workflow-aggregator           # Aggregates pipeline-related plugins
-      - pipeline-model-definition     # Declarative pipeline syntax
-      - pipeline-stage-view           # UI for viewing pipeline stages
-      - pipeline-utility-steps        # Common pipeline steps for file and environment manipulation
-      - workflow-basic-steps          # Basic steps in pipeline workflows
-      - workflow-cps                  # Groovy CPS engine for pipeline scripting
-      - workflow-multibranch          # Multibranch pipelines for Git/SCM
-      - pipeline-milestone-step       # Milestone management in pipelines
-      - pipeline-input-step           # Input steps for interactive prompts in pipelines
-      - workflow-scm-step             # SCM checkout in workflows
-      - workflow-durable-task-step    # Durable tasks for external processes in pipelines
-      - workflow-support              # Foundational support for workflow plugins
-      - pipeline-rest-api             # REST API for interacting with pipelines
-      - pipeline-build-step           # Executes builds in Jenkins pipeline
-      - pipeline-groovy-lib           # Library for reusable Groovy functions
-      - pipeline-stage-step           # Manages stage steps in pipelines
-      - workflow-cps                  # Groovy support in pipelines
-      - workflow-job                  # Pipeline job type
-      - workflow-basic-steps          # Basic pipeline steps
-      - workflow-durable-task-step    # Manages nodes and processes in pipelines
+      # Pipeline & Workflow
+      - workflow-aggregator
+      - pipeline-model-definition
+      - pipeline-stage-view
+      - pipeline-utility-steps
+      - workflow-multibranch
 
-      # Cloud and environment-specific integrations
-      - aws-java-sdk-ec2              # AWS SDK for EC2 interactions
-      - aws-java-sdk2-ec2             # AWS SDK for EC2 interactions, required for credentials
-      - aws-java-sdk-minimal          # Minimal AWS SDK for core services
-      - azure-sdk                     # SDK for Azure integrations
-      - docker-plugin                 # Docker integration for containers and image builds
-      - docker-commons                # Common Docker components
-      - docker-java-api               # Java API for Docker
-      - kubernetes                    # Integrates Jenkins with Kubernetes
-      - cloud-stats                   # Cloud statistics and reporting
+      # Container & Cloud
+      - docker-plugin
+      - kubernetes
 
-      # Essential dependencies
-      - bouncycastle-api              # Cryptographic algorithms for security and encryption
-      - structs                       # Structured data support
-      - jackson2-api                  # JSON parsing and serialization with Jackson 2
-      - jaxb                          # Java XML Binding for XML processing
-      - apache-httpcomponents-client-4-api  # HTTP client capabilities (Apache HTTPComponents v4)
-      - apache-httpcomponents-client-5-api  # HTTP client capabilities (Apache HTTPComponents v5)
-      - joda-time-api                 # Date and time handling utilities
-      - javax-activation-api          # MIME type handling support
-      - snakeyaml-api                 # YAML processing for configuration management
-      - commons-lang3-api             # String manipulation utilities
-      - ionicons-api                  # Icons for Jenkins UI
-      - caffeine-api                  # Concurrency utilities for caching
-      - plugin-util-api               # Common utilities for Jenkins plugins
-      - commons-compress-api          # Compression support for archiving
-      - commons-text-api              # Text manipulation utilities
-      - jquery3-api                   # JavaScript utilities for UI interactions
-      - jquery                        # Older version of jQuery for legacy support
-      - bootstrap5-api                # UI styling with Bootstrap framework
-      - prism-api                     # Syntax highlighting for code snippets
-      - variant                       # Helper library used by various plugins
-      - gson-api                      # Google Gson library for JSON
-      - json-api                      # JSON APIs for data interchange
-      - asm-api                       # Java bytecode manipulation
-      - jakarta-mail-api              # JavaMail API for email functionality
-      - jsch                          # Java Secure Channel for SSH
-      - resource-disposer             # Disposes of resources asynchronously
-      - matrix-project                # Multi-dimensional project support
+      # UI / Blue Ocean
+      - blueocean
 
-      # UI and visualization
-      - build-monitor-plugin          # Visual monitor for job status
-      - blueocean                     # Modern UI for Jenkins, improves visualization
-      - build-pipeline-plugin         # Visual display of pipelines
-      - dashboard-view                # Customizable dashboard for job viewing
-      - timestamper                   # Adds timestamps to build logs
-      - warnings-ng                   # Collects and visualizes static code analysis warnings
-      - echarts-api                   # Data visualization for monitoring plugins
-      - font-awesome-api              # Icons for enhanced UI visualization
-      - blueocean-pipeline-api-impl   # Blue Ocean Pipeline API implementation
-      - blueocean-config              # Blue Ocean configuration
-      - blueocean-git-pipeline        # Blue Ocean Git pipeline support
-      - blueocean-commons             # Common Blue Ocean components
-      - blueocean-web                 # Blue Ocean web interface
-      - blueocean-rest                # REST API for Blue Ocean
-      - blueocean-core-js             # Core JavaScript libraries for Blue Ocean
-      - blueocean-pipeline-editor     # Pipeline editor in Blue Ocean
-      - blueocean-jwt                 # JWT authentication for Blue Ocean
-      - blueocean-dashboard           # Dashboard view in Blue Ocean
-      - blueocean-display-url         # Display URLs in Blue Ocean
-      - blueocean-github-pipeline     # GitHub integration for Blue Ocean
-      - blueocean-bitbucket-pipeline  # Bitbucket integration for Blue Ocean
-      - blueocean-personalization     # Personalization features in Blue Ocean
-      - blueocean-events              # Event handling in Blue Ocean
-      - blueocean-rest-impl           # REST API implementation for Blue Ocean
-      - jenkins-design-language       # Design language for Jenkins UI
-      - blueocean-i18n                # Internationalization support for Blue Ocean
-
-      # Source control management
-      - git                           # Git repository integration
-      - github                        # GitHub integration for SCM and authentication
-      - git-parameter                 # Parameters for Git repositories in jobs
-      - bitbucket                     # Bitbucket integration for SCM
-      - display-url-api               # Displays build URLs in notifications and logs
-      - scm-api                       # API for SCM implementations
-      - git-client                    # Git client plugin
-
-      # Notifications and reporting
-      - email-ext                     # Extended email notifications
-      - slack                         # Slack notifications for job statuses and alerts
-      - junit                         # JUnit test result reporting
-      - cobertura                     # Code coverage reporting with JUnit results
-      - metrics                       # System and build metrics collection
-      - mailer                        # Core mailer plugin for Jenkins
-
-      # Build tools and utilities
-      - gradle                        # Gradle builds support
-      - maven-plugin                  # Maven build support
-      - ant                           # Apache Ant build support
-      - ssh-slaves                    # SSH management for agent nodes
-      - ssh-agent                     # SSH agents in pipelines for Git operations
-      - ansible                       # Ansible playbook execution
-      - ws-cleanup                    # Cleans up workspace post-build
-      - parameterized-trigger         # Triggers builds with parameters
-      - durable-task                  # Handling of long-running tasks
-
-      # Security and quality assurance
-      - dependency-check-jenkins-plugin  # Dependency vulnerability checks
-      - checkmarx                     # Checkmarx security scans
-      - sonar                         # SonarQube integration for code quality analysis
-      - fortify                       # Fortify vulnerability scanning
-      - aqua-security-scanner         # Container security scanning
-
-      # User management and access control
-      - matrix-auth                   # Role-based access control
-      - ldap                          # LDAP integration for user management
-      - role-strategy                 # Fine-grained role-based access
-      - script-security               # Secures Groovy scripts in pipelines
-      - antisamy-markup-formatter     # Sanitizes user input for safe display
-
-      # Additional plugins for advanced usage
-      - okhttp-api                    # HTTP client for integrations
-      - javadoc                       # Javadoc API for building Java projects
-      - json-path-api                 # JSON path parsing for data extraction
-      - checks-api                    # Supports CI/CD checks workflow
-      - trilead-api                   # SSH API for SSH-based plugins
-      - instance-identity             # Provides identity capabilities for security
-
-      # Plugin dependencies for listed items in the error
-      - code-coverage-api             # Dependency for Cobertura plugin
-      - cloudbees-folder              # Hierarchical folder structures for jobs
-      - authentication-tokens         # API tokens for secure authentication
-      - workflow-job                  # Handles jobs with pipelines
-      - forensics-api                 # APIs for forensic analysis of builds
-      - analysis-model-api            # API for integrating static analysis tools
-
-      # 2nd Gen
+      # SCM
       - git
-      - workflow-job
-      - workflow-cps
-      - scm-api
       - github
-      - workflow-scm-step
+      - bitbucket
 
-      # 3rd Gen
-      # Core plugins for pipelines and SCM
-      - git # Core Git plugin for SCM
-      - git-client # Git client for Jenkins Git plugin
-      - scm-api # SCM API for Jenkins to support SCM functionalities
-      - workflow-job # Enables pipeline jobs
-      - workflow-cps # Pipeline: Groovy CPS execution engine
-      - workflow-cps-global-lib # Pipeline: Shared Groovy Libraries
-      - workflow-scm-step # Pipeline: SCM Step for using SCM in pipeline scripts
-      - workflow-multibranch # Pipeline: Multibranch for handling multiple branches
-      - pipeline-stage-view # Provides a graphical view of pipeline stages
-      - pipeline-graph-analysis # Required for stage view and visualization of pipelines
-      - pipeline-rest-api # REST API for Jenkins pipelines
-      - pipeline-model-definition # Declarative pipeline syntax support
+      # Notifications / QA
+      - slack
+      - junit
+      - warnings-ng
 
-      # Blue Ocean Plugins
-      - blueocean # Core Blue Ocean plugin for the modern UI
-      - blueocean-autofavorite # Automatically favorites the pipelines for Blue Ocean UI
-      - blueocean-pipeline-api-impl # Blue Ocean Pipeline API Implementation
-      - blueocean-pipeline-scm-api # SCM API for Blue Ocean
-      - blueocean-rest-impl # REST API Implementation for Blue Ocean
-      - blueocean-bitbucket-pipeline # Blue Ocean support for Bitbucket
-      - blueocean-github-pipeline # Blue Ocean support for GitHub
-      
-      # GitHub Plugins
-      - github # GitHub API support for Jenkins
-      - github-api # GitHub API Library
-      - github-branch-source # Allows multi-branch pipelines from GitHub
+      # Build tools
+      - maven-plugin
+      - gradle
+      - ansible
 
-      # Other core dependencies and required plugins
-      - kubernetes # Core Kubernetes plugin for Jenkins
-      - kubernetes-credentials # Manages Kubernetes credentials
-      - kubernetes-client-api # Kubernetes client API dependency
-      - branch-api # Handles multi-branch projects for SCM
-      - token-macro # Allows token replacement in plugin settings
-      - jakarta-mail-api # Jakarta Mail API
-      - jakarta-activation-api # Jakarta Activation API for email support
-      - mailer # For sending email notifications
-      - data-tables-api # Data tables API required by various plugins
-      - docker-commons # Common libraries for Docker plugins
-      - docker-workflow # Workflow plugin for Docker
-      - warnings-ng # Warnings Next Generation plugin for static analysis reports
-      - forensics-api # Forensics API used by various reporting plugins
-      - cobertura # Code coverage reporting for Jenkins
-      - code-coverage-api # API for code coverage reporting
-      - coverage # Required by the code-coverage-api
-      - gradle # Gradle build tool support
-      - bitbucket # Bitbucket API support
-      - slack # Slack notifications
-      - workflow-basic-steps # Basic steps for pipeline execution
-      - mina-sshd-api-core # Required SSHD core dependency
-      - mina-sshd-api-common # Required SSHD common dependency
+      # Security / Access
+      - matrix-auth
+      - role-strategy
+      - script-security
 
-      # Optional but commonly used plugins (depending on your needs)
-      - ldap # LDAP plugin if you are using LDAP for authentication
-      - email-ext # Extended email notifications
-      - git-parameter # Provides Git parameter options for job configuration
+      # Optional extras
+      - timestamper
+      - ws-cleanup
 
-      # 4th Gen, more dependencies
-      - pipeline-model-api
-      - pipeline-model-extensions
-      - pipeline-stage-tags-metadata
-      - pubsub-light
-      - git-server
-      - jjwt-api
-      - favorite
+  pre_tasks:
+    # Stop Jenkins (if running) so we can stage plugins offline
+    - name: Stop Jenkins before plugin staging
+      service:
+        name: jenkins
+        state: stopped
+      failed_when: false
 
-  tasks:
-
-    ### Install Jenkins Plugins
-    - name: Ensure Jenkins plugin directory exists
-      file:
-        path: /var/lib/jenkins/plugins
-        state: directory
-        owner: jenkins
-        group: jenkins
-        mode: '0755'
-
-    - name: Install Jenkins plugins
+    # Download the Plugin-Installation-Manager CLI once
+    - name: Fetch jenkins-plugin-cli
       get_url:
-        url: "https://updates.jenkins.io/latest/{{ item }}.hpi"
-        dest: "/var/lib/jenkins/plugins/{{ item }}.hpi"
-        mode: '0644'
-        owner: jenkins
-        group: jenkins
-      loop: "{{ jenkins_plugins }}"
+        url: https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/{{ plugin_cli_version }}/jenkins-plugin-manager-{{ plugin_cli_version }}.jar
+        dest: "{{ plugin_cli_jar }}"
+        mode: '0755'
+      when: not lookup('file', plugin_cli_jar, errors='ignore')
 
-    - name: Set plugin ownership and permissions
-      file:
-        path: "/var/lib/jenkins/plugins/{{ item }}.hpi"
-        owner: jenkins
-        group: jenkins
-        mode: '0644'
-      loop: "{{ jenkins_plugins }}"
+    # Render plugins.txt for the CLI
+    - name: Create plugins.txt
+      copy:
+        dest: /tmp/plugins.txt
+        content: |
+          {% for p in jenkins_plugins %}
+          {{ p }}
+          {% endfor %}
 
-    - name: Ensure Jenkins plugins have correct permissions
+    # Resolve the dependency graph and download everything into $JENKINS_HOME/plugins
+    - name: Install plugins (deps included) offline
+      command: >
+        java -jar {{ plugin_cli_jar }}
+        --plugin-file /tmp/plugins.txt
+        --plugin-download-directory {{ jenkins_home }}/plugins
+        --latest true
+        --verbose
+      args:
+        creates: "{{ jenkins_home }}/plugins/{{ jenkins_plugins[0] }}.jpi"
+
+    # Fix ownership
+    - name: Ensure correct ownership on plugins dir
       file:
-        path: /var/lib/jenkins/plugins
+        path: "{{ jenkins_home }}/plugins"
         owner: jenkins
         group: jenkins
         recurse: yes
 
-    # Restart Jenkins to complete installation
-    - name: Restart Jenkins service
-      systemd:
-        name: jenkins
-        state: restarted
-        enabled: yes
+    # Skip the setup wizard so Jenkins starts unlocked
+    - name: Mark setup wizard completed
+      copy:
+        dest: "{{ jenkins_home }}/jenkins.install.UpgradeWizard.state"
+        content: "2.440"
+        owner: jenkins
+        group: jenkins
+        mode: '0644'
 
-    - name: ensure jenkins is running
-      service: name=jenkins state=started
+  tasks:
+    # Start Jenkins once everything is in place
+    - name: Start & enable Jenkins
+      service:
+        name: jenkins
+        state: started
+        enabled: yes

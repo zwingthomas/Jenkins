@@ -3,7 +3,7 @@
   connection: local
   gather_facts: false
   vars:
-    # force Ansible to use system Python3 for all modules here
+    # RECENT CHANGE: force Ansible to use system Python3 for the following modules:
     ansible_python_interpreter: /usr/bin/python3
 
   tasks:
@@ -20,13 +20,11 @@
   hosts: localhost
   connection: local
   vars:
-    # now switch Ansible to your new venv Python
+    # RECENT CHANGE: now switch Ansible to the venv Python
     ansible_python_interpreter: /tmp/ansible_venv/bin/python
 
-  # fact-gathering defaults to true, so setup will run under the venv
+  # RECENT CHANGE: fact-gathering defaults to true meaning setup runs under the venv
   tasks:
     - name: Show the Python interpreter used by Ansible
       debug:
         var: ansible_python_interpreter
-
-    # …other tasks that need the installed libraries…
